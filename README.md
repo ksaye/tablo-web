@@ -9,10 +9,10 @@ on demand so that a phone, a laptop or a smart TV browser can play channels that
 decode natively.
 
 ```
-┌───────────┐   cloud login    ┌──────────────┐
+┌───────────┐   cloud login     ┌──────────────┐
 │  browser  │ ───────────────▶ │  Tablo web   │ ──── HMAC-signed API ───▶ ┌─────────┐
 │           │ ◀── H.264/AAC ── │   + ffmpeg   │ ◀─── MPEG-2/AC3 HLS ───── │  Tablo  │
-└───────────┘      HLS         └──────────────┘                           └─────────┘
+└───────────┘      HLS          └──────────────┘                           └─────────┘
 ```
 
 > Unofficial. Not affiliated with, endorsed by, or supported by Tablo or Scripps. It talks to the
