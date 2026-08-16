@@ -2,7 +2,10 @@
 
 A browser front end for the **Tablo 4th-generation** over-the-air DVR: the 14-day guide, every
 recording, and what is on live right now — all playable in any browser, on any device, on your
-network or over the internet.
+network or over the internet.  
+
+> **Note:** this only works on 4th-generation.  Prior versions use a
+different protocol.
 
 It runs as a small server next to the DVR, signs in with your own Tablo account, and transcodes
 on demand so that a phone, a laptop or a smart TV browser can play channels that no browser can
