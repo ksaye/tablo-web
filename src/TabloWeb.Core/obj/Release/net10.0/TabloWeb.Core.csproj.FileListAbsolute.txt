@@ -1,0 +1,11 @@
+/w/src/TabloWeb.Core/bin/Release/net10.0/TabloWeb.Core.deps.json
+/w/src/TabloWeb.Core/bin/Release/net10.0/TabloWeb.Core.dll
+/w/src/TabloWeb.Core/bin/Release/net10.0/TabloWeb.Core.pdb
+/w/src/TabloWeb.Core/obj/Release/net10.0/TabloWeb.Core.GeneratedMSBuildEditorConfig.editorconfig
+/w/src/TabloWeb.Core/obj/Release/net10.0/TabloWeb.Core.AssemblyInfoInputs.cache
+/w/src/TabloWeb.Core/obj/Release/net10.0/TabloWeb.Core.AssemblyInfo.cs
+/w/src/TabloWeb.Core/obj/Release/net10.0/TabloWeb.Core.csproj.CoreCompileInputs.cache
+/w/src/TabloWeb.Core/obj/Release/net10.0/TabloWeb.Core.dll
+/w/src/TabloWeb.Core/obj/Release/net10.0/refint/TabloWeb.Core.dll
+/w/src/TabloWeb.Core/obj/Release/net10.0/TabloWeb.Core.pdb
+/w/src/TabloWeb.Core/obj/Release/net10.0/ref/TabloWeb.Core.dll

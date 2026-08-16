@@ -1,0 +1,54 @@
+# Tablo web, software encoding — the version that works on any machine.
+#
+#   docker compose up -d          then open http://localhost:8787 and sign in
+#
+# For hardware encoding, add one of the overlay files:
+#   docker compose -f docker-compose.yml -f docker-compose.nvidia.yml up -d
+#   docker compose -f docker-compose.yml -f docker-compose.vaapi.yml  up -d
+
+services:
+  tabloweb:
+    build: .
+    image: tablo-web:latest
+    container_name: tabloweb
+    restart: unless-stopped
+
+    ports:
+      - "8787:8787"
+
+    volumes:
+      # Credentials and the keys that encrypt them. Losing this means signing in again.
+      - ./config:/config
+      # Transcoded segments. They live in the container by default, which is fine — nothing here
+      # is worth keeping. Mount a disk here if the container filesystem is small: a recording is
+      # kept in full while it is being watched, so allow a few GB per concurrent viewer.
+      # - ./stream:/var/tmp/tabloweb-stream
+
+    environment:
+      # Software encoding. `auto` would look for a GPU first; this file has no GPU to find, so
+      # say so plainly rather than paying for a probe that will fail.
+      TABLOWEB_ENCODER: cpu
+
+      # x264 speed/quality. `veryfast` needs roughly two cores per 720p60 channel; `superfast`
+      # or `ultrafast` trade picture for CPU on a weaker machine.
+      TABLOWEB_X264_PRESET: veryfast
+
+      # The biggest saving available without a GPU: send 720p and 1080i channels out at 480p.
+      # Cost falls roughly with the pixel count, and on a phone it is hard to tell.
+      # TABLOWEB_MAX_HEIGHT: 480
+
+      # How many people may watch at once. Each one is an ffmpeg, and each live viewer holds a
+      # tuner on the DVR. Lower this before anything else if the machine is struggling.
+      TABLOWEB_MAX_STREAMS: 3
+
+      # Optional: sign in without a browser. Leave these out and the site asks on first visit,
+      # which keeps the password out of your shell history and your compose file.
+      # TABLO_EMAIL: you@example.com
+      # TABLO_PASSWORD: your-password
+      # TABLO_SERVER_ID: xxxxxxxxxxxx
+
+      # Set when a reverse proxy terminates TLS in front of this, so the session cookie is
+      # marked Secure. Do not set it for plain http — the cookie could never be set at all.
+      # TABLOWEB_COOKIE_SECURE: 1
+
+      TZ: ${TZ:-UTC}

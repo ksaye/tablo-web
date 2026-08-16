@@ -1,0 +1,23 @@
+# VA-API overlay — Intel Quick Sync, and AMD on Linux. No extra host software beyond the normal
+# graphics driver; the container just needs the render node.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.vaapi.yml up -d
+#
+# If /dev/dri/renderD128 is not the right node (a machine with a discrete card as well often has
+# renderD129), point TABLOWEB_VAAPI_DEVICE at the right one. `ls -l /dev/dri` and
+# `vainfo --display drm --device /dev/dri/renderD128` on the host are the way to tell.
+
+services:
+  tabloweb:
+    environment:
+      TABLOWEB_ENCODER: vaapi
+      # TABLOWEB_VAAPI_DEVICE: /dev/dri/renderD128
+
+    devices:
+      - /dev/dri:/dev/dri
+
+    # The container runs as root by default, which can open the render node. If you run it as a
+    # normal user instead, that user has to be in the host's `render` group — pass its numeric
+    # gid here, since group names inside the container mean nothing.
+    # group_add:
+    #   - "993"

@@ -1,0 +1,24 @@
+[Unit]
+Description=Tablo web (guide, recordings and live TV in a browser)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# The user that owns /opt/tabloweb. Nothing here needs privilege.
+User=tabloweb
+WorkingDirectory=/opt/tabloweb
+EnvironmentFile=/opt/tabloweb/.env
+ExecStart=/usr/bin/dotnet /opt/tabloweb/TabloWeb.dll
+Restart=always
+RestartSec=15
+# ffmpeg children must die with the unit, or an abandoned transcode keeps a tuner busy.
+KillMode=control-group
+TimeoutStopSec=20
+NoNewPrivileges=true
+ProtectSystem=full
+# PrivateTmp is deliberately off: transcoded segments live under the working directory, and the
+# reaper cleans them up itself.
+
+[Install]
+WantedBy=multi-user.target

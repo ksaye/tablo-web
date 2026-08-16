@@ -1,0 +1,23 @@
+{
+  "runtimeTarget": {
+    "name": ".NETCoreApp,Version=v10.0",
+    "signature": ""
+  },
+  "compilationOptions": {},
+  "targets": {
+    ".NETCoreApp,Version=v10.0": {
+      "TabloWeb.Core/1.0.0": {
+        "runtime": {
+          "TabloWeb.Core.dll": {}
+        }
+      }
+    }
+  },
+  "libraries": {
+    "TabloWeb.Core/1.0.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    }
+  }
+}

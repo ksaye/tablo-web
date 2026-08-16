@@ -1,0 +1,6 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/TabloWeb.Core/TabloWeb.Core.csproj" />
+    <Project Path="src/TabloWeb/TabloWeb.csproj" />
+  </Folder>
+</Solution>

@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>TabloWeb</RootNamespace>
+    <AssemblyName>TabloWeb</AssemblyName>
+    <Platforms>AnyCPU;x64</Platforms>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <!-- No package references on purpose: cookie authentication and data protection are both in
+       the shared framework, so the whole app is the SDK and nothing else. -->
+
+  <ItemGroup>
+    <ProjectReference Include="..\TabloWeb.Core\TabloWeb.Core.csproj" />
+  </ItemGroup>
+
+</Project>

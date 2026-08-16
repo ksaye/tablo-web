@@ -1,0 +1,35 @@
+# NVIDIA (NVENC) overlay. Needs the NVIDIA driver on the host and the NVIDIA Container Toolkit.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.nvidia.yml up -d
+#
+# Check it took: the log says "Encoding on the GPU (h264_nvenc…)" at startup, and `nvidia-smi`
+# shows an ffmpeg using the encoder while something is playing. If the test encode fails the app
+# says why and carries on in software.
+
+services:
+  tabloweb:
+    environment:
+      TABLOWEB_ENCODER: nvenc
+
+      # `video` is the capability that carries NVENC/NVDEC. Without it the card appears but the
+      # encoder does not exist, which looks exactly like a missing driver.
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: video,compute,utility
+
+      # Which card, when there is more than one. Use the UUID from `nvidia-smi -L`, never an
+      # index — indexes move the day a card is added, and the wrong card means stealing an
+      # engine from whatever else is using it.
+      # TABLOWEB_GPU: GPU-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+
+      # Decode and deinterlace on the GPU as well: cheaper again, but nvdec is less forgiving of
+      # a weak over-the-air signal than the software decoder. Try it, and turn it off if a
+      # marginal channel starts breaking up.
+      # TABLOWEB_HWDECODE: 1
+
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu, video]

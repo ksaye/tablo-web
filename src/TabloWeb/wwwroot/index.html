@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>Tablo</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect x='2' y='8' width='28' height='19' rx='3' fill='%234da3ff'/><path d='M13 14l7 4.5-7 4.5z' fill='%230d1117'/><path d='M9 8l7-5 7 5' stroke='%234da3ff' stroke-width='2.5' fill='none' stroke-linecap='round'/></svg>">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <svg viewBox="0 0 32 32" aria-hidden="true"><rect x="2" y="8" width="28" height="19" rx="3"/><path d="M13 14l7 4.5-7 4.5z" class="tri"/><path d="M9 8l7-5 7 5" class="ant"/></svg>
+    <span>Tablo</span>
+  </div>
+
+  <nav class="tabs" role="tablist">
+    <button class="tab" role="tab" data-view="live">Live TV</button>
+    <button class="tab" role="tab" data-view="recordings">Recordings</button>
+    <button class="tab" role="tab" data-view="guide">Guide</button>
+  </nav>
+
+  <div class="status" id="status" title="Connection status">
+    <span class="dot" id="statusDot"></span>
+    <span id="statusText">Connecting…</span>
+  </div>
+
+  <div class="who" id="who" hidden>
+    <span id="whoName" title=""></span>
+    <a href="/login" class="ghost" id="signOut" title="Sign out. Hold shift to also forget this Tablo account on the server.">Sign out</a>
+  </div>
+</header>
+
+<div id="banner" class="banner" hidden></div>
+
+<main>
+  <!-- ------------------------------------------------------------------ Live -->
+  <section class="view" id="view-live" hidden>
+    <div class="viewhead">
+      <h1>On now</h1>
+      <input type="search" id="liveSearch" class="search" placeholder="Filter channels…" autocomplete="off">
+    </div>
+    <div class="cards" id="liveList"></div>
+  </section>
+
+  <!-- ------------------------------------------------------------ Recordings -->
+  <section class="view" id="view-recordings" hidden>
+    <div class="viewhead">
+      <h1>Recordings <span class="count" id="recCount"></span></h1>
+      <div class="viewtools">
+        <select id="recSort" class="select" aria-label="Sort recordings">
+          <option value="date">Newest first</option>
+          <option value="title">Title</option>
+          <option value="size">Largest first</option>
+        </select>
+        <input type="search" id="recSearch" class="search" placeholder="Search recordings…" autocomplete="off">
+      </div>
+    </div>
+    <div class="cards recordings" id="recList"></div>
+  </section>
+
+  <!-- ----------------------------------------------------------------- Guide -->
+  <section class="view" id="view-guide" hidden>
+    <div class="viewhead">
+      <h1>Guide</h1>
+      <div class="viewtools">
+        <select id="guideDay" class="select" aria-label="Day"></select>
+        <div class="nudge">
+          <button id="guidePrev" class="ghost" title="Back two hours">‹</button>
+          <button id="guideNow" class="ghost">Now</button>
+          <button id="guideNext" class="ghost" title="Forward two hours">›</button>
+        </div>
+      </div>
+    </div>
+    <div id="guideLoading" class="loading" hidden>
+      <div class="bar"><div id="guideBar"></div></div>
+      <p>Loading the 14-day guide from the Tablo — many thousands of programs. This happens once.</p>
+    </div>
+    <div class="guide" id="guideWrap" hidden>
+      <div class="guide-times" id="guideTimes"></div>
+      <div class="guide-body" id="guideBody"></div>
+    </div>
+  </section>
+</main>
+
+<!-- ------------------------------------------------------------------- Player -->
+<div class="player" id="player" hidden>
+  <div class="player-head">
+    <div class="player-title">
+      <strong id="playerTitle"></strong>
+      <span id="playerSub"></span>
+    </div>
+    <button class="ghost close" id="playerClose" title="Close player">✕</button>
+  </div>
+
+  <div class="player-stage" id="playerStage" title="Double-click or press F for full screen">
+    <video id="video" playsinline controls></video>
+    <div class="player-overlay" id="playerOverlay"><div class="spinner"></div><span id="playerMsg">Starting the transcoder…</span></div>
+  </div>
+
+  <!-- Recordings get their own scrubber: the HLS playlist only contains the part that has
+       been transcoded so far, so the browser's own bar would understate the length. -->
+  <div class="scrub" id="scrub" hidden>
+    <div class="scrub-bar" id="scrubBar">
+      <div class="scrub-ready" id="scrubReady"></div>
+      <div class="scrub-played" id="scrubPlayed"></div>
+      <div class="scrub-knob" id="scrubKnob"></div>
+    </div>
+    <div class="scrub-times"><span id="scrubAt">0:00</span><span id="scrubOf">0:00</span></div>
+  </div>
+</div>
+<div class="scrim" id="scrim" hidden></div>
+
+<!-- ------------------------------------------------------------------ Details -->
+<div class="sheet" id="sheet" hidden>
+  <div class="sheet-head">
+    <div>
+      <strong id="sheetTitle"></strong>
+      <span id="sheetSub"></span>
+    </div>
+    <button class="ghost close" id="sheetClose" title="Close">✕</button>
+  </div>
+  <p id="sheetDesc"></p>
+  <div class="sheet-meta" id="sheetMeta"></div>
+  <div class="sheet-actions" id="sheetActions"></div>
+</div>
+
+<script src="vendor/hls.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
