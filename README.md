@@ -7,6 +7,9 @@ network or over the internet.
 > **Note:** this only works on 4th-generation.  Prior versions use a
 different protocol.
 
+> The Tablo device, while inexpensive, has limited hardware.  Running too many commands will cause
+> slow response and may require a hard restart (unplugging and replugging in the devices). 
+
 It runs as a small server next to the DVR, signs in with your own Tablo account, and transcodes
 on demand so that a phone, a laptop or a smart TV browser can play channels that no browser can
 decode natively.
