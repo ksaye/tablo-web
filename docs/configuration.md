@@ -35,6 +35,15 @@ is the `serverId` shown in the sign-in chooser, and in the log line at startup.
 | `TABLOWEB_COOKIE_SECURE` | off | Mark the session cookie Secure |
 | `TABLOWEB_NO_LOGIN` | off | Run with no sign-in at all |
 | `TABLOWEB_SAVE_CREDENTIALS` | on | Allow credentials to be written to disk |
+| `TABLOWEB_GUIDE_HOUR` | `3` | Local hour of the daily guide reload |
+
+**`TABLOWEB_GUIDE_HOUR` is when the DVR gets its one hard job of the day.** A full guide load
+is hundreds of batch calls, and the box refuses connections outright while it is under that load
+— including the ones it needs for its own recordings. The guide is therefore reloaded on a clock
+rather than a cache lifetime (a lifetime drifts to whatever time the service last restarted) and
+the default 3am is chosen for being the quietest hour. A load that comes back short of what the
+device listed is not trusted: the fuller of the old and new guides is kept, and it tries again ten
+minutes later.
 
 **`TABLOWEB_CONFIG_DIR` holds two things that matter**: the encrypted Tablo credentials, and the
 data-protection keys that both encrypt them and sign session cookies. Lose it and everybody signs

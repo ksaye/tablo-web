@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.HttpOverrides;
 using TabloWeb;
+using TabloWeb.Services;
 
 // ---------------------------------------------------------------------------------------------
 // Tablo web — a browser front end for the Tablo 4th-generation DVR.
@@ -170,6 +171,18 @@ app.MapPost("/api/play", async (HttpContext http, PlayRequest request, Cancellat
         return Results.BadRequest(new { error = "No program was given." });
     try
     {
+        // A free streaming channel is already adaptive H.264/AAC on a public CDN, which every
+        // browser plays as-is. Hand the URL over and skip ffmpeg entirely — no tuner, no
+        // transcode, and the player picks its own bitrate for the connection it has.
+        if (TabloClient.IsFast(request.Path))
+        {
+            var watch = await tablo.WithRetryAsync(c => c.WatchAsync(request.Path, ct), ct);
+            if (string.IsNullOrWhiteSpace(watch?.PlaylistUrl))
+                return Results.Json(new { error = "That channel has no stream." },
+                    statusCode: StatusCodes.Status502BadGateway);
+            return Results.Ok(new PlayDto("", watch!.PlaylistUrl!, true, 0, 0));
+        }
+
         // Encode for the road the video has to travel: full quality inside the house, a lower
         // bitrate when it is going out through the uplink.
         var remote = Caller.IsRemote(http);

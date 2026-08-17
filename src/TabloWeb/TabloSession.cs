@@ -29,8 +29,13 @@ public sealed class TabloSession(ILogger<TabloSession> log)
     public string? AccountEmail => _credentials?.Email;
 
     private readonly Cache<List<GuideChannelWrap>> _channels = new(TimeSpan.FromHours(6));
+    // The free streaming channels and their listings come from the cloud, not the device, so
+    // they are loaded and cached on their own — a busy DVR has nothing to do with them.
+    private readonly Cache<List<GuideAiring>> _fastGuide = new(TimeSpan.FromHours(25));
     private readonly Cache<List<RecordingAiring>> _recordings = new(TimeSpan.FromMinutes(2));
-    private readonly Cache<List<GuideAiring>> _guide = new(TimeSpan.FromHours(6));
+    // The guide's real schedule is the daily reload in WarmAsync (3am local) plus whatever a
+    // restart does; this lifetime is only a backstop for a day the schedule somehow misses.
+    private readonly Cache<List<GuideAiring>> _guide = new(TimeSpan.FromHours(25));
     private readonly Cache<StorageBox> _storage = new(TimeSpan.FromMinutes(5));
 
     /// <summary>Progress of a guide load in flight, 0..1, or null when not loading.</summary>
@@ -115,6 +120,7 @@ public sealed class TabloSession(ILogger<TabloSession> log)
         _channels.Clear();
         _recordings.Clear();
         _guide.Clear();
+        _fastGuide.Clear();
         _storage.Clear();
         State = "Waiting for a Tablo sign-in.";
     }
@@ -129,6 +135,7 @@ public sealed class TabloSession(ILogger<TabloSession> log)
             _channels.Clear();
             _recordings.Clear();
             _guide.Clear();
+            _fastGuide.Clear();
             _storage.Clear();
         }
         State = $"Connected to {device.Display}";
@@ -249,25 +256,99 @@ public sealed class TabloSession(ILogger<TabloSession> log)
 
     // ------------------------------------------------------------------ cached content
 
+    /// <summary>
+    /// Every channel: the antenna ones the device scanned, plus the account's free streaming
+    /// (FAST) channels, which only the cloud lineup knows about. A cloud hiccup costs the FAST
+    /// channels, never the antenna ones.
+    /// </summary>
     public Task<List<GuideChannelWrap>> ChannelsAsync(bool force = false, CancellationToken ct = default) =>
-        _channels.GetAsync(force, () => WithRetryAsync(c => c.GetChannelsAsync(ct), ct));
+        _channels.GetAsync(force, () => WithRetryAsync(async c =>
+        {
+            var all = await c.GetAllChannelsAsync(ct);
+            var fast = all.Count(x => TabloClient.IsFast(x.Path));
+            log.LogInformation("Channels: {Ota} antenna + {Fast} free streaming", all.Count - fast, fast);
+            return all;
+        }, ct));
 
     public Task<List<RecordingAiring>> RecordingsAsync(bool force = false, CancellationToken ct = default) =>
         _recordings.GetAsync(force, () => WithRetryAsync(c => c.GetRecordingsAsync(ct), ct));
 
-    public Task<List<GuideAiring>> GuideAsync(bool force = false, CancellationToken ct = default) =>
-        _guide.GetAsync(force, async () =>
+    /// <summary>
+    /// The guide: loaded at startup, once a day at <see cref="GuideHour"/>, and on an explicit
+    /// refresh — never on a visitor's page load.
+    ///
+    /// A load that lost batches to a busy device is NOT trusted: it expires in minutes rather
+    /// than hours, and if it came back smaller than what we already have, the older, fuller
+    /// guide is kept. A 3am refresh that only managed 7,050 of 19,951 airings otherwise
+    /// replaced a complete guide with a mostly-empty one for the next six hours.
+    /// </summary>
+    public async Task<List<GuideAiring>> GuideAsync(bool force = false, CancellationToken ct = default)
+    {
+        var device = await DeviceGuideAsync(force, ct);
+        var fast = await FastGuideAsync(force, ct);
+        return fast.Count == 0 ? device : device.Concat(fast).ToList();
+    }
+
+    /// <summary>
+    /// Listings for the free streaming channels, from the cloud. One call per channel per day,
+    /// so it is loaded on the same daily schedule as the DVR's own guide — but it is cheap for
+    /// the DVR (it never sees it) and a failure here leaves the antenna guide untouched.
+    /// </summary>
+    private Task<List<GuideAiring>> FastGuideAsync(bool force, CancellationToken ct) =>
+        _fastGuide.GetAsync(force, async () =>
+        {
+            try
+            {
+                var fastChannels = (await ChannelsAsync(false, ct))
+                    .Where(c => TabloClient.IsFast(c.Path)).ToList();
+                if (fastChannels.Count == 0) return new List<GuideAiring>();
+
+                var airings = await WithRetryAsync(
+                    c => c.GetFastGuideAiringsAsync(fastChannels, ct: ct), ct);
+                log.LogInformation("Free streaming guide loaded: {Count} airings across {Channels} channels",
+                    airings.Count, fastChannels.Count);
+                return airings;
+            }
+            catch (Exception ex)
+            {
+                log.LogWarning("Free streaming guide failed ({Message})", ex.Message);
+                return new List<GuideAiring>();
+            }
+        }, list => list.Count > 0);
+
+    private Task<List<GuideAiring>> DeviceGuideAsync(bool force, CancellationToken ct) =>
+        _guide.GetAsync(force, async previous =>
         {
             var progress = new Progress<double>(p => GuideProgress = p);
             GuideProgress = 0;
             try
             {
-                var airings = await WithRetryAsync(c => c.GetGuideAiringsAsync(progress, ct), ct);
-                log.LogInformation("Guide loaded: {Count} airings", airings.Count);
-                return airings;
+                var stats = new GuideLoadStats();
+                var airings = await WithRetryAsync(
+                    c => c.GetGuideAiringsAsync(progress, ct, stats), ct);
+
+                if (stats.Complete)
+                {
+                    log.LogInformation("Guide loaded: {Count} airings ({Recovered} batches needed the " +
+                        "slow sweep)", airings.Count, stats.RecoveredBatches);
+                    return (airings, true);
+                }
+
+                log.LogWarning(
+                    "Guide loaded PARTIALLY: {Count} of {Expected} airings ({Failed} of {Batches} " +
+                    "batches never answered — the device is busy). Retrying in {Retry}.",
+                    airings.Count, stats.Expected, stats.FailedBatches, stats.Batches, GuideRetry);
+
+                if (previous is not null && previous.Count > airings.Count)
+                {
+                    log.LogWarning("Keeping the previous guide ({Count} airings) — it is fuller.",
+                        previous.Count);
+                    return (previous, false);
+                }
+                return (airings, false);
             }
             finally { GuideProgress = null; }
-        });
+        }, GuideRetry);
 
     /// <summary>
     /// Recording space. Wrapped because the cache holds reference types and the endpoint may
@@ -288,26 +369,67 @@ public sealed class TabloSession(ILogger<TabloSession> log)
             return new StorageBox(info?.Normalized());
         }, box => box.Info is not null);
 
+    /// <summary>
+    /// How long to wait before another go at a guide that came back incomplete. Long enough
+    /// that a busy device is left alone — a guide load is hundreds of calls and hammering it is
+    /// what wedges the box — but short enough that the listings heal within one sitting.
+    /// </summary>
+    private static readonly TimeSpan GuideRetry = TimeSpan.FromMinutes(10);
+
     /// <summary>True while the guide has never finished loading — the UI shows a progress bar.</summary>
     public bool GuideReady => _channels.HasValue && _guide.HasValue;
 
     /// <summary>
-    /// Warm the caches in the background so the first visitor doesn't wait out a full guide load.
-    /// Failures are logged and retried on the next pass, never fatal.
+    /// Local hour of the daily guide refresh — 3am by default, overridable with
+    /// TABLOWEB_GUIDE_HOUR. Nothing is watching the DVR then, and a full load is hundreds of
+    /// calls that the device would rather not field while someone is using it.
+    /// </summary>
+    private static int GuideHour =>
+        int.TryParse(Environment.GetEnvironmentVariable("TABLOWEB_GUIDE_HOUR"), out var h)
+        && h is >= 0 and <= 23 ? h : 3;
+
+    /// <summary>The next <see cref="GuideHour"/> strictly after <paramref name="after"/>, local time.</summary>
+    private static DateTime NextGuideRefresh(DateTime after)
+    {
+        var today = after.Date.AddHours(GuideHour);
+        return today > after ? today : today.AddDays(1);
+    }
+
+    /// <summary>
+    /// Warm the caches in the background at startup so the first visitor doesn't wait out a
+    /// full guide load, and reload the guide once a day. Failures are logged and retried,
+    /// never fatal.
+    ///
+    /// The guide is on a clock rather than a cache lifetime: a lifetime makes the reload drift
+    /// into whatever time of day the service last restarted, and the reload is the single most
+    /// expensive thing done to the device.
     /// </summary>
     public async Task WarmAsync(CancellationToken ct)
     {
+        var nextGuide = NextGuideRefresh(DateTime.Now);
+        log.LogInformation("Daily guide refresh at {Hour:00}:00 local; next at {Next}",
+            GuideHour, nextGuide);
+
         while (!ct.IsCancellationRequested)
         {
             // Nothing to warm until somebody has signed in. Wait quietly rather than logging a
             // failure a minute forever on a fresh install.
             if (!NeedsCredentials)
             {
+                var due = DateTime.Now >= nextGuide;
                 try
                 {
                     await ChannelsAsync(ct: ct);
                     await RecordingsAsync(ct: ct);
-                    await GuideAsync(ct: ct);
+
+                    // Reschedule before loading, not after: a load that throws must not leave
+                    // the loop trying again every minute.
+                    if (due)
+                    {
+                        nextGuide = NextGuideRefresh(DateTime.Now);
+                        log.LogInformation("Daily guide refresh starting; next at {Next}", nextGuide);
+                    }
+                    await GuideAsync(due, ct);
                 }
                 // Only a real shutdown ends the loop. An HttpClient timeout also surfaces as a
                 // TaskCanceledException, and treating that as shutdown silently killed the warmer —
@@ -316,6 +438,11 @@ public sealed class TabloSession(ILogger<TabloSession> log)
                 catch (Exception ex)
                 {
                     log.LogWarning("Warm-up failed ({Message}); will retry", ex.Message);
+
+                    // A daily refresh that blew up should not leave yesterday's listings for
+                    // another 24 hours — try again shortly instead.
+                    if (due && nextGuide - DateTime.Now > GuideRetry)
+                        nextGuide = DateTime.Now + GuideRetry;
                 }
             }
 
@@ -361,7 +488,20 @@ internal sealed class Cache<T>(TimeSpan lifetime) where T : class
     /// but expires in seconds rather than being trusted for the full lifetime — which is what
     /// a device call that lost a race with the guide load deserves.
     /// </param>
-    public async Task<T> GetAsync(bool force, Func<Task<T>> load, Func<T, bool>? valid = null)
+    public Task<T> GetAsync(bool force, Func<Task<T>> load, Func<T, bool>? valid = null) =>
+        GetAsync(force, async _ =>
+        {
+            var v = await load();
+            return (v, valid is null || valid(v));
+        }, RetrySoon);
+
+    /// <summary>
+    /// As above, but the loader is handed whatever is cached now and says for itself whether
+    /// the load is trustworthy — which lets it fall back to the previous value. An untrusted
+    /// value expires after <paramref name="retryAfter"/> instead of the full lifetime.
+    /// </summary>
+    public async Task<T> GetAsync(
+        bool force, Func<T?, Task<(T Value, bool Valid)>> load, TimeSpan retryAfter)
     {
         if (!force && Fresh) return _value!;
 
@@ -376,10 +516,9 @@ internal sealed class Cache<T>(TimeSpan lifetime) where T : class
         try
         {
             if (!force && Fresh) return _value!;
-            _value = await load();
-            _loadedUtc = valid is null || valid(_value)
-                ? DateTime.UtcNow
-                : DateTime.UtcNow - lifetime + RetrySoon;
+            var (value, valid) = await load(_value);
+            _value = value;
+            _loadedUtc = valid ? DateTime.UtcNow : DateTime.UtcNow - lifetime + retryAfter;
             return _value;
         }
         finally { _gate.Release(); }

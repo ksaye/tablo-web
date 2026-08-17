@@ -275,14 +275,211 @@ public sealed class TabloClient
             .ToList();
     }
 
+    // ---- FAST (free streaming) channels ----
+
+    /// <summary>
+    /// Synthetic path prefix for a FAST channel. FAST channels have no object on the device,
+    /// so they get a path of their own that the rest of the app can carry around exactly like
+    /// a "/guide/channels/NNN" one.
+    /// </summary>
+    public const string FastChannelPrefix = "/fast/channels/";
+
+    /// <summary>Synthetic path prefix for a FAST airing (see <see cref="FastChannelPrefix"/>).</summary>
+    public const string FastAiringPrefix = "/fast/airings/";
+
+    /// <summary>True for the synthetic paths above — i.e. anything that isn't on the DVR.</summary>
+    public static bool IsFast(string? path) =>
+        path is not null && path.StartsWith("/fast/", StringComparison.Ordinal);
+
+    // Channel path -> the partner CDN's HLS playlist. Filled in by GetFastChannelsAsync and
+    // read by WatchAsync, which is how a FAST channel plays through the same code path as a
+    // tuner channel.
+    private readonly Dictionary<string, string> _fastStreams = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// The account's whole channel lineup as the cloud sees it — antenna channels AND the free
+    /// streaming ones. The device's own /guide/channels only ever lists what its tuners scanned.
+    /// </summary>
+    public async Task<List<LineupChannel>> GetCloudLineupAsync(CancellationToken ct = default) =>
+        await CloudGetAsync<List<LineupChannel>>(
+            $"/api/v2/account/{_lighthouse}/guide/channels/", ct) ?? new();
+
+    /// <summary>
+    /// The FAST channels, shaped like device channels so callers can merge them straight into
+    /// a channel list. Also caches each channel's stream URL for <see cref="WatchAsync"/>.
+    /// </summary>
+    public async Task<List<GuideChannelWrap>> GetFastChannelsAsync(CancellationToken ct = default)
+    {
+        var list = new List<GuideChannelWrap>();
+        foreach (var c in await GetCloudLineupAsync(ct))
+        {
+            if (!string.Equals(c.Kind, "ott", StringComparison.OrdinalIgnoreCase) || c.Ott is null)
+                continue;
+
+            var path = FastChannelPrefix + c.Identifier;
+            if (!string.IsNullOrWhiteSpace(c.Ott.StreamUrl))
+                _fastStreams[path] = FillStreamMacros(c.Ott.StreamUrl!);
+
+            list.Add(new GuideChannelWrap
+            {
+                Path = path,
+                Channel = new Channel
+                {
+                    // The lineup's callSign is a slug ("welcomehome"); the name is what the
+                    // official app shows, and it is what belongs in a channel column.
+                    CallSign = string.IsNullOrWhiteSpace(c.Name) ? c.Ott.CallSign ?? "" : c.Name,
+                    Name = c.Name,
+                    Major = c.Ott.Major,
+                    Minor = c.Ott.Minor,
+                    Network = c.Ott.Network,
+                    Logos = c.Logos
+                }
+            });
+        }
+        return list
+            .OrderBy(c => c.Channel.Major).ThenBy(c => c.Channel.Minor)
+            .ToList();
+    }
+
+    /// <summary>
+    /// Every channel worth showing: the antenna channels the device scanned, followed by the
+    /// account's FAST channels. If the cloud lineup can't be read, the antenna channels are
+    /// still returned — losing the streaming channels must never cost you the DVR.
+    /// </summary>
+    public async Task<List<GuideChannelWrap>> GetAllChannelsAsync(CancellationToken ct = default)
+    {
+        var ota = await GetChannelsAsync(ct);
+        try { return ota.Concat(await GetFastChannelsAsync(ct)).ToList(); }
+        catch { return ota; }
+    }
+
+    /// <summary>
+    /// The FAST guide: one cloud call per channel per day, shaped like device guide airings.
+    ///
+    /// Listings run about a fortnight out and are keyed by day, so the whole grid is
+    /// channels × days requests. They go to the cloud rather than the little appliance, so a
+    /// handful in flight is fine — but the guide is still cached by every caller.
+    /// </summary>
+    /// <param name="channels">FAST channels from <see cref="GetFastChannelsAsync"/>.</param>
+    /// <param name="days">Days ahead to fetch. The cloud has roughly 14.</param>
+    public async Task<List<GuideAiring>> GetFastGuideAiringsAsync(
+        IReadOnlyList<GuideChannelWrap> channels, int days = 14,
+        IProgress<double>? progress = null, CancellationToken ct = default)
+    {
+        // Start a day back: the cloud files an airing under the day its listing block belongs
+        // to, which is not always the local day it starts in, and a programme running over
+        // midnight has to appear on both.
+        var dates = Enumerable.Range(-1, days + 1)
+            .Select(d => DateTime.UtcNow.Date.AddDays(d).ToString("yyyy-MM-dd"))
+            .ToList();
+
+        var jobs = channels.SelectMany(c => dates.Select(d => (Channel: c, Date: d))).ToList();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var results = new List<GuideAiring>();
+        var done = 0;
+        var sync = new object();
+
+        using var gate = new SemaphoreSlim(8);
+        var tasks = jobs.Select(async job =>
+        {
+            await gate.WaitAsync(ct);
+            try
+            {
+                List<CloudAiring>? day = null;
+                try
+                {
+                    day = await CloudGetAsync<List<CloudAiring>>(
+                        $"/api/v2/account/guide/channels/{job.Channel.Path[FastChannelPrefix.Length..]}" +
+                        $"/airings/{job.Date}/", ct);
+                }
+                catch { /* one channel-day missing beats no guide at all */ }
+
+                lock (sync)
+                {
+                    foreach (var a in day ?? new())
+                        if (seen.Add(a.Identifier))
+                            results.Add(ToGuideAiring(a, job.Channel.Path));
+                    done++;
+                    progress?.Report(Math.Min(1, (double)done / jobs.Count));
+                }
+            }
+            finally { gate.Release(); }
+        });
+        await Task.WhenAll(tasks);
+
+        return results;
+    }
+
+    /// <summary>Reshape a cloud airing as a device-style guide airing.</summary>
+    private static GuideAiring ToGuideAiring(CloudAiring a, string channelPath)
+    {
+        var isMovie = string.Equals(a.Kind, "movieAiring", StringComparison.OrdinalIgnoreCase);
+        return new GuideAiring
+        {
+            Path = FastAiringPrefix + a.Identifier,
+            AiringDetails = new AiringDetails
+            {
+                Datetime = a.Datetime,
+                Duration = a.Duration,
+                ChannelPath = channelPath,
+                ShowTitle = a.Show?.Title ?? a.Title
+            },
+            MovieAiring = isMovie
+                ? new MovieInfo
+                {
+                    Title = a.Show?.Title ?? a.Title,
+                    Description = a.Description,
+                    ReleaseYear = a.MovieAiring?.ReleaseYear
+                }
+                : null,
+            Episode = isMovie
+                ? null
+                : new EpisodeInfo
+                {
+                    // The cloud's "title" is the episode within "show" — except on the channels
+                    // that just repeat the show title, where carrying it would print the same
+                    // words twice as programme and sub-heading.
+                    Title = string.Equals(a.Title, a.Show?.Title, StringComparison.Ordinal) ? null : a.Title,
+                    Description = a.Description,
+                    Number = a.Episode?.EpisodeNumber,
+                    SeasonNumber = a.Episode?.Season?.Number,
+                    OrigAirDate = a.Episode?.OriginalAirDate
+                },
+            // Nothing on a FAST channel can be scheduled — see ScheduleAiringAsync.
+            Schedule = new ScheduleInfo { State = "none" }
+        };
+    }
+
+    /// <summary>
+    /// FAST playlist URLs carry REPLACE_ME placeholders for the advertising parameters the
+    /// official apps fill in. The stream plays with them simply blanked out.
+    /// </summary>
+    private static string FillStreamMacros(string url) => url.Replace("REPLACE_ME", "");
+
+    private async Task<T?> CloudGetAsync<T>(string path, CancellationToken ct)
+    {
+        using var req = new HttpRequestMessage(HttpMethod.Get, LighthouseHost + path);
+        req.Headers.TryAddWithoutValidation("User-Agent", CloudUserAgent);
+        req.Headers.TryAddWithoutValidation("Authorization", _cloudAuthorization);
+        if (_lighthouse is not null) req.Headers.TryAddWithoutValidation("Lighthouse", _lighthouse);
+        req.Headers.Accept.ParseAdd("*/*");
+        return await SendJsonAsync<T>(req, ct);
+    }
+
     // ---- Guide + scheduling ----
 
     /// <summary>
     /// Load the full guide (all airings, ~14 days) and resolve details via concurrent /batch
     /// calls (device caps each batch at 50). Reports progress 0..1. Cached per instance.
     /// </summary>
+    /// <param name="stats">
+    /// Optional: filled in with how much of the guide actually came back. A busy device drops
+    /// batches, and a caller that caches the result needs to know it got a partial guide rather
+    /// than trusting a third of the listings for the next six hours.
+    /// </param>
     public async Task<List<GuideAiring>> GetGuideAiringsAsync(
-        IProgress<double>? progress = null, CancellationToken ct = default)
+        IProgress<double>? progress = null, CancellationToken ct = default,
+        GuideLoadStats? stats = null)
     {
         var paths = await DeviceGetAsync<List<string>>("/guide/airings", ct) ?? new();
         var chunks = Chunk(paths, 50).ToList();
@@ -290,51 +487,98 @@ public sealed class TabloClient
         var done = 0;
         var sync = new object();
 
-        // Keep concurrency modest — the device is a small appliance and drops connections
-        // if hit too hard. Retry a failed batch a couple of times, and never let one bad
-        // batch abort the whole guide (partial guide is better than none).
-        using var gate = new SemaphoreSlim(4);
+        var missed = new List<List<string>>();
+
+        // Keep concurrency LOW — the device is a small appliance, and 400 batch POSTs at four
+        // at a time saturate its API port badly enough that it starts refusing our own
+        // connections (measured 2026-08-17: 154 of 400 batches lost, and port 8887 refusing
+        // 20/20 while the load ran, back to 20/20 three minutes after it stopped). Two in
+        // flight roughly doubles the wall time of a load that happens once every six hours
+        // in the background, and the guide comes back whole.
+        using var gate = new SemaphoreSlim(2);
+
+        async Task<bool> RunAsync(List<string> chunk, int attempts)
+        {
+            JsonElement? doc = null;
+            var json = JsonSerializer.Serialize(chunk);
+            // Back off properly: a device that just refused a batch is busy, and 200ms
+            // later it is still busy. 0.5s, 1.5s, 3s gives it time to drain.
+            for (int attempt = 0; attempt < attempts; attempt++)
+            {
+                try { doc = await DevicePostAsync<JsonElement>("/batch", json, ct); break; }
+                catch when (attempt < attempts - 1) { await Task.Delay(500 * ((1 << attempt) + attempt), ct); }
+                catch { doc = null; }   // give up on this batch
+            }
+
+            var local = new List<GuideAiring>();
+            if (doc is { ValueKind: JsonValueKind.Object } el)
+                foreach (var prop in el.EnumerateObject())
+                {
+                    try
+                    {
+                        var a = prop.Value.Deserialize<GuideAiring>(Json);
+                        if (a is not null) { a.Path = prop.Name; local.Add(a); }
+                    }
+                    catch { /* skip */ }
+                }
+            lock (sync)
+            {
+                results.AddRange(local);
+                done++;
+                progress?.Report(Math.Min(1, (double)done / chunks.Count));
+            }
+            return doc is not null;
+        }
+
         var tasks = chunks.Select(async chunk =>
         {
             await gate.WaitAsync(ct);
             try
             {
-                JsonElement? doc = null;
-                var json = JsonSerializer.Serialize(chunk);
-                for (int attempt = 0; attempt < 3; attempt++)
-                {
-                    try { doc = await DevicePostAsync<JsonElement>("/batch", json, ct); break; }
-                    catch when (attempt < 2) { await Task.Delay(200 * (attempt + 1), ct); }
-                    catch { doc = null; }   // give up on this batch
-                }
-
-                var local = new List<GuideAiring>();
-                if (doc is { ValueKind: JsonValueKind.Object } el)
-                    foreach (var prop in el.EnumerateObject())
-                    {
-                        try
-                        {
-                            var a = prop.Value.Deserialize<GuideAiring>(Json);
-                            if (a is not null) { a.Path = prop.Name; local.Add(a); }
-                        }
-                        catch { /* skip */ }
-                    }
-                lock (sync)
-                {
-                    results.AddRange(local);
-                    done++;
-                    progress?.Report((double)done / chunks.Count);
-                }
+                // Never let one bad batch abort the whole guide — a partial guide is better
+                // than none, and the sweep below picks up what this pass lost.
+                if (!await RunAsync(chunk, attempts: 4))
+                    lock (sync) missed.Add(chunk);
             }
             finally { gate.Release(); }
         });
         await Task.WhenAll(tasks);
+
+        // Second pass for the batches that never answered. The device refuses connections
+        // while it is congested and recovers within a couple of minutes of being left alone,
+        // so pause first and then go one at a time — re-running the whole guide later would
+        // just repeat the congestion that lost them.
+        var stillMissing = 0;
+        if (missed.Count > 0)
+        {
+            await Task.Delay(TimeSpan.FromSeconds(30), ct);
+            foreach (var chunk in missed)
+            {
+                if (!await RunAsync(chunk, attempts: 3)) stillMissing++;
+                await Task.Delay(250, ct);
+            }
+        }
+
+        if (stats is not null)
+        {
+            stats.Expected = paths.Count;
+            stats.Batches = chunks.Count;
+            stats.RecoveredBatches = missed.Count - stillMissing;
+            stats.FailedBatches = stillMissing;
+        }
         return results;
     }
 
     /// <summary>Schedule or unschedule a single guide airing.</summary>
     public async Task ScheduleAiringAsync(string airingPath, bool scheduled, CancellationToken ct = default)
     {
+        // A FAST channel is not on an antenna, so the DVR has no object to schedule and no way
+        // to capture it. Fail with something a caller can show rather than a 404 from the box.
+        if (IsFast(airingPath))
+            throw new NotSupportedException(
+                "Free streaming channels can be watched but not recorded — the DVR only records " +
+                "what its tuners receive.");
+
         var body = JsonSerializer.Serialize(new { scheduled });
         using var res = await SendDeviceAsync(HttpMethod.Patch, airingPath, body, ct);
         if (!res.IsSuccessStatusCode)
@@ -357,9 +601,23 @@ public sealed class TabloClient
         return batch.TryGetValue(seriesPath, out var el) ? el.Deserialize<GuideSeries>(Json) : null;
     }
 
-    /// <summary>Ask the device to start a stream. Works for both recording paths and channel paths.</summary>
-    public Task<WatchResponse?> WatchAsync(string path, CancellationToken ct = default) =>
-        DevicePostAsync<WatchResponse>(path.TrimEnd('/') + "/watch", "", ct);
+    /// <summary>
+    /// Ask the device to start a stream. Works for both recording paths and channel paths —
+    /// and for a FAST channel, which streams from the channel partner's CDN and never touches
+    /// the DVR or a tuner at all.
+    /// </summary>
+    public Task<WatchResponse?> WatchAsync(string path, CancellationToken ct = default)
+    {
+        if (IsFast(path))
+            return Task.FromResult<WatchResponse?>(
+                _fastStreams.TryGetValue(path.TrimEnd('/'), out var url)
+                    ? new WatchResponse { PlaylistUrl = url }
+                    // Only happens if a cached path outlived the lineup that produced it.
+                    : throw new InvalidOperationException(
+                        "That streaming channel is no longer in the lineup. Refresh the guide."));
+
+        return DevicePostAsync<WatchResponse>(path.TrimEnd('/') + "/watch", "", ct);
+    }
 
     /// <summary>Delete a recording (path like /recordings/series/episodes/NNN).</summary>
     public async Task DeleteRecordingAsync(string path, CancellationToken ct = default)
@@ -484,6 +742,23 @@ public sealed class TabloClient
         DateTime.TryParse(s, CultureInfo.InvariantCulture,
             DateTimeStyles.AdjustToUniversal | DateTimeStyles.AssumeUniversal, out var d)
             ? d : DateTime.MinValue;
+}
+
+/// <summary>
+/// How complete a guide load was. The device drops /batch calls when it is busy and the load
+/// carries on regardless, so the airing count alone cannot tell a quiet night from a device
+/// that answered a third of the questions.
+/// </summary>
+public sealed class GuideLoadStats
+{
+    /// <summary>Airing paths the device listed — the size of a complete guide.</summary>
+    public int Expected { get; set; }
+    public int Batches { get; set; }
+    /// <summary>Batches that failed the first pass but came back on the later, slower sweep.</summary>
+    public int RecoveredBatches { get; set; }
+    /// <summary>Batches that never answered, after retries. Their airings are simply missing.</summary>
+    public int FailedBatches { get; set; }
+    public bool Complete => FailedBatches == 0;
 }
 
 public class TabloAuthException(string message) : Exception(message);

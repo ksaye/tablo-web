@@ -7,12 +7,15 @@ namespace TabloWeb;
 // to render straight from these without knowing anything about the Tablo's own JSON.
 
 public sealed record ChannelDto(
-    string Path, string Number, string CallSign, string Name, string? Network, string? Resolution)
+    string Path, string Number, string CallSign, string Name, string? Network, string? Resolution,
+    /// <summary>A free streaming channel rather than an antenna one — watchable, never recordable.</summary>
+    bool IsFast)
 {
     public static ChannelDto From(GuideChannelWrap w) => new(
         w.Path, w.Channel.DisplayNumber, w.Channel.CallSign,
         string.IsNullOrWhiteSpace(w.Channel.Name) ? w.Channel.CallSign : w.Channel.Name,
-        w.Channel.Network, w.Channel.Resolution);
+        w.Channel.Network, w.Channel.Resolution,
+        TabloClient.IsFast(w.Path));
 }
 
 public sealed record RecordingDto(

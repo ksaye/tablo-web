@@ -116,6 +116,78 @@ public sealed class ChannelLogo
     [JsonPropertyName("url")] public string Url { get; set; } = "";
 }
 
+// ---- Cloud channel lineup (OTA + FAST) ----
+
+/// <summary>
+/// One channel from the account's cloud lineup
+/// (<c>/api/v2/account/{lighthouse}/guide/channels/</c>). This is the only place the free
+/// ad-supported streaming ("FAST") channels appear — the device on :8887 lists antenna
+/// channels and nothing else.
+/// </summary>
+public sealed class LineupChannel
+{
+    [JsonPropertyName("identifier")] public string Identifier { get; set; } = "";
+    [JsonPropertyName("name")] public string Name { get; set; } = "";
+    /// <summary>"ota" for an antenna channel, "ott" for a FAST streaming channel.</summary>
+    [JsonPropertyName("kind")] public string Kind { get; set; } = "";
+    [JsonPropertyName("logos")] public List<ChannelLogo> Logos { get; set; } = new();
+    [JsonPropertyName("ota")] public LineupFeed? Ota { get; set; }
+    [JsonPropertyName("ott")] public LineupFeed? Ott { get; set; }
+}
+
+public sealed class LineupFeed
+{
+    [JsonPropertyName("major")] public int Major { get; set; }
+    [JsonPropertyName("minor")] public int Minor { get; set; }
+    [JsonPropertyName("callSign")] public string? CallSign { get; set; }
+    [JsonPropertyName("network")] public string? Network { get; set; }
+    /// <summary>FAST only: the HLS playlist, straight from the channel partner's CDN.</summary>
+    [JsonPropertyName("streamUrl")] public string? StreamUrl { get; set; }
+    /// <summary>
+    /// What the cloud says about recording this channel. Note that even a "true" here is not
+    /// reachable through this API: the DVR only records what its own tuners can see.
+    /// </summary>
+    [JsonPropertyName("canRecord")] public bool CanRecord { get; set; }
+}
+
+/// <summary>One programme from the cloud guide for a single channel and day.</summary>
+public sealed class CloudAiring
+{
+    [JsonPropertyName("identifier")] public string Identifier { get; set; } = "";
+    [JsonPropertyName("title")] public string? Title { get; set; }
+    [JsonPropertyName("datetime")] public string? Datetime { get; set; }
+    [JsonPropertyName("duration")] public int Duration { get; set; }
+    [JsonPropertyName("description")] public string? Description { get; set; }
+    /// <summary>"episode" or "movieAiring".</summary>
+    [JsonPropertyName("kind")] public string? Kind { get; set; }
+    [JsonPropertyName("genres")] public List<string> Genres { get; set; } = new();
+    [JsonPropertyName("show")] public CloudShow? Show { get; set; }
+    [JsonPropertyName("episode")] public CloudEpisode? Episode { get; set; }
+    [JsonPropertyName("movieAiring")] public CloudMovie? MovieAiring { get; set; }
+}
+
+public sealed class CloudShow
+{
+    [JsonPropertyName("title")] public string? Title { get; set; }
+}
+
+public sealed class CloudEpisode
+{
+    [JsonPropertyName("season")] public CloudSeason? Season { get; set; }
+    [JsonPropertyName("episodeNumber")] public int? EpisodeNumber { get; set; }
+    [JsonPropertyName("originalAirDate")] public string? OriginalAirDate { get; set; }
+}
+
+public sealed class CloudSeason
+{
+    [JsonPropertyName("number")] public int? Number { get; set; }
+}
+
+public sealed class CloudMovie
+{
+    [JsonPropertyName("releaseYear")] public int? ReleaseYear { get; set; }
+}
+
 // ---- Recordings (airings) ----
 
 public sealed class RecordingAiring

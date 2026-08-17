@@ -145,6 +145,7 @@ main { padding: 16px; max-width: 1600px; margin: 0 auto; }
 .badge.rec { background: #3d1d1d; color: var(--bad); }
 .badge.kept { background: #3a2f10; color: var(--warn); }
 .badge.watched { background: var(--panel-2); color: var(--muted); }
+.badge.free { background: #12303a; color: #7fd3ea; }
 
 /* Live cards lead with the channel rather than artwork — there is no artwork for live. */
 .live-card .card-body { padding: 12px 14px; }

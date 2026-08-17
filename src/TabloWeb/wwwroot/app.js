@@ -188,6 +188,9 @@ function renderNow() {
     const body = el('div', 'card-body');
 
     const head = el('div', 'live-num', `${channel.number}  ${channel.callSign}`);
+    // Streaming channels come over the internet, not the antenna — worth saying, because
+    // they are the ones that cannot be recorded.
+    if (channel.isFast) head.append(' ', el('span', 'badge free', 'FREE'));
     body.append(head);
     body.append(el('div', 'card-title', airing ? airing.title : channel.name));
     if (airing && airing.subtitle) body.append(el('div', 'card-sub', airing.subtitle));
@@ -382,6 +385,7 @@ function renderGuide(start) {
 
     const head = el('div', 'guide-chan');
     head.append(el('b', null, channel.number), el('span', null, channel.callSign));
+    if (channel.isFast) head.append(el('span', 'badge free', 'FREE'));
     row.append(head);
 
     const slots = el('div', 'guide-slots');
@@ -571,13 +575,15 @@ async function startSession(path, live, position, duration) {
     });
 
     if (ticket !== startTicket) {
-      fetch(`/api/stop/${body.sessionId}`, { method: 'POST' }).catch(() => { /* best effort */ });
+      if (body.sessionId) fetch(`/api/stop/${body.sessionId}`, { method: 'POST' }).catch(() => { /* best effort */ });
       return;
     }
 
     state.play = { sessionId: body.sessionId, offset: body.offsetSeconds };
     attach(body.url);
-    watchSession();
+    // A free streaming channel plays straight from the partner's CDN: no session id, because
+    // there is no transcoder and no tuner behind it to watch or shut down.
+    if (body.sessionId) watchSession();
   } catch (err) {
     if (ticket === startTicket) setOverlay(`Could not start playback. ${err.message}`);
   }
@@ -654,13 +660,14 @@ function detachPlayer() {
   video.load();
 }
 
+
 async function stopSession() {
   startTicket++;                // anything mid-start is now superseded
   clearInterval(sessionWatch);
   const play = state.play;
   state.play = null;
   detachPlayer();
-  if (play) {
+  if (play && play.sessionId) {
     try { await fetch(`/api/stop/${play.sessionId}`, { method: 'POST' }); } catch { /* best effort */ }
   }
 }

@@ -30,7 +30,12 @@ decode natively.
 
 - **Live TV** — every channel with what is on it now and how far through it is; click to watch.
 - **Recordings** — artwork, search and sort, resume where you left off.
-- **Guide** — a scrolling 14-day grid, showing what is already scheduled to record.
+- **Guide** — a scrolling 14-day grid, showing what is already scheduled to record. It is
+  loaded once a day, in the small hours, because a full load is the hardest thing anything
+  does to the DVR.
+- **Free streaming channels** — the FAST channels on your account appear beside the antenna
+  ones, with their own listings, marked `FREE`. They play straight from the channel's CDN,
+  so they cost no tuner and no transcode — but nothing can record them.
 - **Plays in the browser** — one ffmpeg per viewer, H.264/AAC in an HLS stream, with a seek bar
   that understands a recording is still being transcoded.
 - **Adapts to where you are** — full bitrate on your own network, roughly half of it for a viewer
