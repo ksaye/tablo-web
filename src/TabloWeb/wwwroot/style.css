@@ -225,6 +225,20 @@ main { padding: 16px; max-width: 1600px; margin: 0 auto; }
 .player-title span { font-size: 12.5px; color: var(--muted); }
 .close { margin-left: auto; padding: 5px 10px; }
 
+/* The captions toggle sits with the close button; whichever of the two comes first takes the
+   gap, so the pair stays together on the right whether or not captions are on offer. */
+.cc { margin-left: auto; padding: 5px 10px; font-weight: 700; letter-spacing: .5px; }
+.cc + .close { margin-left: 8px; }
+.cc[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #051016; }
+
+/* Broadcast captions arrive as a wall of white on nothing; a box behind them is what makes
+   them readable over a bright picture, and 608 text is monospaced by convention. */
+video::cue {
+  background: #000000bf; color: #fff;
+  font-family: ui-monospace, "Cascadia Mono", Menlo, Consolas, monospace;
+  font-size: 88%; line-height: 1.35;
+}
+
 .player-stage { position: relative; background: #000; aspect-ratio: 16/9; }
 .player-stage video { width: 100%; height: 100%; display: block; background: #000; }
 

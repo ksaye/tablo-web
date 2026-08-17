@@ -36,6 +36,7 @@ decode natively.
 - **Free streaming channels** — the FAST channels on your account appear beside the antenna
   ones, with their own listings, marked `FREE`. They play straight from the channel's CDN,
   so they cost no tuner and no transcode — but nothing can record them.
+- **Closed captions** — a `CC` button in the player whenever the broadcast carries them.
 - **Plays in the browser** — one ffmpeg per viewer, H.264/AAC in an HLS stream, with a seek bar
   that understands a recording is still being transcoded.
 - **Adapts to where you are** — full bitrate on your own network, roughly half of it for a viewer

@@ -102,6 +102,12 @@ Whatever you choose is verified at startup by encoding a second of colour bars â
 listed by ffmpeg says nothing about a driver being loaded or a device being reachable inside a
 container. If the test fails the app says why, in one line, and carries on in software.
 
+**`TABLOWEB_HWDECODE` costs you closed captions.** Broadcast captions are EIA-608 data buried
+in the MPEG-2 video, and the software decoder is the only one that hands them on: `mpeg2_cuvid`
+drops them, so there is nothing for the encoder to re-embed and the CC button never appears. Every
+encoder here (x264, NVENC, VA-API) preserves them by default, so a GPU *encode* is free of this â€”
+it is GPU decoding alone that loses them.
+
 `TABLOWEB_GPU` takes the UUID from `nvidia-smi -L`, not an index. Indexes move the day a card is
 added, and CUDA's default ordering is by capability rather than slot, so an index can quietly
 select a different card from the one you meant.

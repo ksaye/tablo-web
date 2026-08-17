@@ -603,6 +603,9 @@ function attach(url) {
       fragLoadingMaxRetry: 6
     });
     hls.on(Hls.Events.MANIFEST_PARSED, () => video.play().catch(() => { /* autoplay may be blocked */ }));
+    // A manifest may advertise subtitle renditions of its own (the FAST channels do); the
+    // embedded 608 track arrives later, through addtrack.
+    hls.on(Hls.Events.SUBTITLE_TRACKS_UPDATED, applyCaptions);
     hls.on(Hls.Events.ERROR, (_, data) => {
       if (!data.fatal) return;
       if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
@@ -658,8 +661,72 @@ function detachPlayer() {
   if (hls) { hls.destroy(); hls = null; }
   video.removeAttribute('src');
   video.load();
+  resetCaptions();
 }
 
+// ---------------------------------------------------------------------- captions
+
+/* Broadcast closed captions are EIA-608 data carried inside the video itself, not a separate
+   track, and they survive the transcode: ffmpeg lifts them out of the MPEG-2 user data and
+   every encoder here (libx264, h264_nvenc, h264_vaapi) writes them back as A/53 SEI by
+   default, which hls.js then decodes into a text track. Hardware *decoding* is the one thing
+   that loses them — mpeg2_cuvid never exports the side data, so there is nothing left to
+   re-embed — which makes TABLOWEB_HWDECODE and captions mutually exclusive.
+   The FAST channels are different again: their captions come from the CDN as subtitle
+   renditions in the manifest, which hls.js only renders once one is selected.
+
+   Nothing shows any of this by default, so the button below is the whole feature: the track
+   exists but starts disabled, and the browser's own controls expose it inconsistently —
+   Chrome buries it, Firefox omits it entirely. */
+
+const CC_KEY = 'tabloweb.cc';
+let ccOn = localStorage.getItem(CC_KEY) === '1';
+
+const isCaptionTrack = (t) => t.kind === 'captions' || t.kind === 'subtitles';
+
+function captionTracks() {
+  return Array.from(video.textTracks).filter(isCaptionTrack);
+}
+
+/* Apply the current preference to whatever tracks exist now. Tracks appear part-way through
+   playback (hls.js only creates one when it first sees caption data), so this runs again on
+   every addtrack rather than once at start-up.
+
+   'hidden' rather than 'disabled' for the off state: a disabled track is not parsed at all,
+   and a viewer turning captions on mid-programme would then wait for the next caption to
+   arrive before seeing anything. */
+function applyCaptions() {
+  const tracks = captionTracks();
+  tracks.forEach((t, i) => { t.mode = ccOn && i === 0 ? 'showing' : 'hidden'; });
+
+  // Manifest subtitle renditions (the FAST channels) are hls.js's own selection, separate
+  // from the text tracks above.
+  if (hls && hls.subtitleTracks && hls.subtitleTracks.length) {
+    hls.subtitleDisplay = ccOn;
+    hls.subtitleTrack = ccOn ? 0 : -1;
+  }
+
+  const available = tracks.length > 0 || !!(hls && hls.subtitleTracks && hls.subtitleTracks.length);
+  const btn = $('ccBtn');
+  btn.hidden = !available;
+  btn.setAttribute('aria-pressed', String(ccOn));
+  btn.title = ccOn ? 'Turn closed captions off' : 'Turn closed captions on';
+}
+
+function resetCaptions() {
+  $('ccBtn').hidden = true;
+  captionTracks().forEach(t => { t.mode = 'disabled'; });
+}
+
+video.textTracks.addEventListener('addtrack', (e) => {
+  if (isCaptionTrack(e.track)) applyCaptions();
+});
+
+$('ccBtn').addEventListener('click', () => {
+  ccOn = !ccOn;
+  localStorage.setItem(CC_KEY, ccOn ? '1' : '0');
+  applyCaptions();
+});
 
 async function stopSession() {
   startTicket++;                // anything mid-start is now superseded

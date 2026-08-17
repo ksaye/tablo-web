@@ -92,6 +92,9 @@
       <strong id="playerTitle"></strong>
       <span id="playerSub"></span>
     </div>
+    <!-- Broadcast captions ride inside the video as EIA-608 data; they only become a track
+         once the player has actually seen some, so this stays hidden until then. -->
+    <button class="ghost cc" id="ccBtn" title="Closed captions" hidden aria-pressed="false">CC</button>
     <button class="ghost close" id="playerClose" title="Close player">✕</button>
   </div>
 
