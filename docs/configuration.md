@@ -90,6 +90,11 @@ sure the proxy sets it, or every viewer will look remote.
 
 ![Four channels in multi-view](images/multi-view.png)
 
+Pick the channels from the **Multi-view** tab — the order you pick them in is the order the panes
+are laid out:
+
+![Choosing the channels](images/multi-view-picker.png)
+
 | Variable | Default | |
 |---|---|---|
 | `TABLOWEB_MOSAIC_DIR` | `mosaic/` beside the binary | Where the tiled segments are written |
