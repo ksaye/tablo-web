@@ -20,7 +20,8 @@ Watch 2–4 live channels at once, tiled into a single picture.
 - New settings: `TABLOWEB_MOSAIC_DIR`, `TABLOWEB_MOSAIC_DEINT`, `TABLOWEB_MOSAIC_LOWRES`,
   `TABLOWEB_MOSAIC_BOX_THICKNESS`. See [docs/configuration.md](docs/configuration.md).
 - `docs/images/multi-view.png` — four channels running at once, so the README shows the thing
-  rather than describing it, plus `multi-view-picker.png` for how the channels are chosen.
+  rather than describing it, plus `multi-view-picker.png` and `multi-view-player.png` for how the
+  channels are chosen and what the controls look like while it runs.
 - Re-shot `guide.png`, `live-tv.png` and `recordings.png`: their tab bars predated the
   **Multi-view** tab, so the first thing anyone saw in the README contradicted the feature list.
 

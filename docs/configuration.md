@@ -95,6 +95,12 @@ are laid out:
 
 ![Choosing the channels](images/multi-view-picker.png)
 
+While it plays, the bar under the picture moves the sound between panes and controls the
+auto-cycle. The yellow border follows the sound — here on pane 3 — and in full screen, where
+there is no bar, the arrow keys do the same job:
+
+![The player, with the pane controls](images/multi-view-player.png)
+
 | Variable | Default | |
 |---|---|---|
 | `TABLOWEB_MOSAIC_DIR` | `mosaic/` beside the binary | Where the tiled segments are written |
