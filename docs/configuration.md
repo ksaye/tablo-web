@@ -88,6 +88,8 @@ sure the proxy sets it, or every viewer will look remote.
 
 ## Multi-view
 
+![Four channels in multi-view](images/multi-view.png)
+
 | Variable | Default | |
 |---|---|---|
 | `TABLOWEB_MOSAIC_DIR` | `mosaic/` beside the binary | Where the tiled segments are written |

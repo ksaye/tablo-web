@@ -19,6 +19,8 @@ Watch 2–4 live channels at once, tiled into a single picture.
   to the cycle.
 - New settings: `TABLOWEB_MOSAIC_DIR`, `TABLOWEB_MOSAIC_DEINT`, `TABLOWEB_MOSAIC_LOWRES`,
   `TABLOWEB_MOSAIC_BOX_THICKNESS`. See [docs/configuration.md](docs/configuration.md).
+- `docs/images/multi-view.png` — four channels running at once, so the README shows the thing
+  rather than describing it.
 
 Carried over with it, from running this in anger:
 

@@ -51,6 +51,12 @@ decode natively.
 It is **read-only**: it plays what the DVR has and shows what is scheduled, but does not schedule
 or delete anything.
 
+Multi-view, full screen on a television: four channels, one stream, one decoder. The yellow
+border marks the pane the sound is coming from — it is drawn into the video by the server,
+because in full screen the picture is the only thing on screen.
+
+![Four channels in multi-view](docs/images/multi-view.png)
+
 | Live TV | Recordings |
 |---|---|
 | ![Live TV](docs/images/live-tv.png) | ![Recordings](docs/images/recordings.png) |
