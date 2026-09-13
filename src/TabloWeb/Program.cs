@@ -29,6 +29,7 @@ builder.Logging.AddFilter("Microsoft.AspNetCore.DataProtection", LogLevel.Error)
 
 builder.Services.AddSingleton<TabloSession>();
 builder.Services.AddSingleton<StreamManager>();
+builder.Services.AddSingleton<MosaicManager>();
 builder.Services.AddHostedService<Warmer>();
 builder.Services.AddHttpClient("device").ConfigurePrimaryHttpMessageHandler(
     // Snapshot images come from a raw LAN IP; a system proxy would refuse to route it.
@@ -52,6 +53,7 @@ CredentialStore.Use(app.Services.GetRequiredService<IDataProtectionProvider>());
 
 var tablo = app.Services.GetRequiredService<TabloSession>();
 var streams = app.Services.GetRequiredService<StreamManager>();
+var mosaics = app.Services.GetRequiredService<MosaicManager>();
 
 // Credentials from the environment or from a previous sign-in, so a restart reconnects and
 // starts warming the guide without waiting for a browser.
@@ -233,6 +235,97 @@ app.MapGet("/stream/{id}/{file}", (string id, string file) =>
     return Results.File(File.OpenRead(path), type, enableRangeProcessing: !file.EndsWith(".m3u8"));
 });
 
+// ---------------------------------------------------------------------------------- multi-view
+
+// Several live channels tiled into one stream, composited by ffmpeg on the server (see
+// MosaicManager for why it is not done in the client). One session at a time — there is one couch.
+// Every pane is a tuner; this deliberately does not check for a recording conflict ("always allow,
+// never yield").
+
+static async Task<List<ChannelDto>> ResolveChannels(TabloSession t, IEnumerable<string> paths, CancellationToken ct)
+{
+    var all = (await t.ChannelsAsync(false, ct)).ToDictionary(w => w.Path, ChannelDto.From);
+    return paths.Select(p => all.TryGetValue(p, out var c)
+        ? c : new ChannelDto(p, "", "", p, null, null, TabloClient.IsFast(p))).ToList();
+}
+
+app.MapGet("/api/mosaic", async (CancellationToken ct) =>
+{
+    var s = mosaics.Current;
+    if (s is null) return Results.Ok(new { running = false });
+    return Results.Ok(new
+    {
+        running = true,
+        id = s.Id,
+        url = $"/mosaic/{s.Id}/master.m3u8",
+        channels = await ResolveChannels(tablo, s.Channels, ct)
+    });
+});
+
+app.MapPost("/api/mosaic", async (HttpContext http, MosaicRequest request, CancellationToken ct) =>
+{
+    var paths = (request.Channels ?? []).Where(p => !string.IsNullOrWhiteSpace(p)).ToList();
+    if (paths.Count is < 2 or > 4)
+        return Results.BadRequest(new { error = "Pick between 2 and 4 channels for multi-view." });
+
+    try
+    {
+        var s = await mosaics.StartAsync(paths, Caller.IsRemote(http), ct);
+        return Results.Ok(new
+        {
+            id = s.Id,
+            url = $"/mosaic/{s.Id}/master.m3u8",
+            channels = await ResolveChannels(tablo, s.Channels, ct)
+        });
+    }
+    catch (ArgumentException ex) { return Results.BadRequest(new { error = ex.Message }); }
+    catch (Exception ex)
+    {
+        app.Logger.LogWarning(ex, "Mosaic start failed");
+        return Results.Json(new { error = ex.Message }, statusCode: StatusCodes.Status502BadGateway);
+    }
+});
+
+// Health, so the page can tell "still running" from "gone". No keepalive is sent: a mosaic holds
+// tuners and is left to the server's idle reaper, exactly like a plain live stream.
+app.MapGet("/api/mosaic/{id}", (string id) =>
+{
+    var s = mosaics.Get(id);
+    return s is null
+        ? Results.NotFound(new { error = "That multi-view session has ended." })
+        : Results.Ok(new { id = s.Id, alive = s.Alive, finished = s.Finished, lastError = s.LastError });
+});
+
+app.MapPost("/api/mosaic/{id}/stop", (string id) => { mosaics.Stop(id); return Results.Ok(new { }); });
+
+// Move the yellow "this pane has the sound" box. Cheap — a runtime command to the running
+// ffmpeg, no restart. Called by the page on every audio-pane change (including the auto-cycle).
+app.MapPost("/api/mosaic/{id}/audio", (string id, MosaicAudioRequest req) =>
+{
+    mosaics.SetAudioBox(id, req.Pane);
+    return Results.Ok(new { });
+});
+
+// Serve the mosaic transcoder's output. Same strict rule as /stream: only the plain names ffmpeg
+// writes, never anything a caller composed.
+app.MapGet("/mosaic/{id}/{file}", (string id, string file) =>
+{
+    var session = mosaics.Get(id);
+    if (session is null) return Results.NotFound();
+
+    var ok = file == "master.m3u8"
+        || System.Text.RegularExpressions.Regex.IsMatch(file, @"^index-[A-Za-z0-9]+\.m3u8$")
+        || System.Text.RegularExpressions.Regex.IsMatch(file, @"^index-[A-Za-z0-9]+-s\d{5}\.ts$");
+    if (!ok) return Results.NotFound();
+
+    var path = Path.Combine(session.Dir, file);
+    if (!File.Exists(path)) return Results.NotFound();
+    session.Touch();
+
+    var type = file.EndsWith(".m3u8") ? "application/vnd.apple.mpegurl" : "video/mp2t";
+    return Results.File(File.OpenRead(path), type, enableRangeProcessing: !file.EndsWith(".m3u8"));
+});
+
 app.Run();
 
 // ------------------------------------------------------------------------------------ helpers
@@ -259,6 +352,10 @@ static void LoadDotEnv()
 }
 
 public sealed record PlayRequest(string Path, bool Live, double? Position, int? Duration);
+
+public sealed record MosaicRequest(string[]? Channels);
+
+public sealed record MosaicAudioRequest(int Pane);
 
 /// <summary>Loads the guide and recordings in the background so the first visitor isn't the one who waits.</summary>
 public sealed class Warmer(TabloSession session) : BackgroundService

@@ -105,6 +105,7 @@ function setView(view) {
   }
   location.hash = view;
   if (view === 'live') loadNow();
+  if (view === 'multiview') loadMultiview();
   if (view === 'recordings') loadRecordings();
   if (view === 'guide') loadGuide();
 }
@@ -216,6 +217,256 @@ function renderNow() {
 }
 
 $('liveSearch').addEventListener('input', renderNow);
+
+// -------------------------------------------------------------------- multi-view
+
+/* Several live channels tiled into one stream by the server (see MosaicManager). The picker
+   below chooses 2–4; the server composites them and hands back a single HLS URL whose audio
+   renditions are the individual panes, so switching the sound between panes is a track change,
+   not a re-encode.
+
+   Nothing in here may touch `video` at load time — `const video` is not initialised until the
+   player section further down, and a top-level reference here would throw before the rest of
+   this file ever ran. The mute listeners therefore live down there, next to the others. */
+
+const mv = {
+  selected: [],          // channel paths, in pick order
+  session: null,         // { id, url, channels }
+  audioPane: 0,
+  rotateTimer: null,
+  muted: false           // a mosaic starts muted for mobile autoplay; the first gesture lifts it
+};
+
+async function loadMultiview() {
+  try {
+    await loadChannels();
+    const { body } = await api('/api/now');
+    state.now = body;
+  } catch { /* renderMultiview copes with an empty list */ }
+  renderMultiview();
+  // If a mosaic is already running — a page reload, or another tab — rejoin it rather than
+  // leaving an orphan holding every tuner.
+  reattachMosaic();
+}
+
+function renderMultiview() {
+  const list = $('mvList');
+  // Antenna and free streaming channels alike; multi-view has no concept of a recording.
+  const rows = state.now;
+
+  if (!rows.length) {
+    list.replaceChildren(el('div', 'empty', 'No channels found.'));
+    return;
+  }
+
+  list.replaceChildren(...rows.map(({ channel, airing }) => {
+    const card = el('div', 'card live-card mv-card');
+    card.dataset.path = channel.path;
+
+    const body = el('div', 'card-body');
+    const head = el('div', 'live-num', `${channel.number}  ${channel.callSign}`);
+    if (channel.isFast) head.append(' ', el('span', 'badge free', 'FREE'));
+    body.append(head);
+    body.append(el('div', 'card-title', airing ? airing.title : channel.name));
+    if (airing && airing.subtitle) body.append(el('div', 'card-sub', airing.subtitle));
+    card.append(body);
+    card.addEventListener('click', () => toggleMvPick(channel.path));
+    return card;
+  }));
+
+  refreshMvSelection();
+}
+
+/* Apply the current selection to the cards already on screen — WITHOUT rebuilding the list.
+   A full re-render detaches the card that was just tapped, which drops focus to <body> and, on a
+   touch device, scrolls the list back to the top on every pick. */
+function refreshMvSelection() {
+  for (const card of $('mvList').querySelectorAll('.mv-card')) {
+    const pos = mv.selected.indexOf(card.dataset.path);
+    card.classList.toggle('selected', pos >= 0);
+    if (pos >= 0) card.dataset.pick = pos + 1; else delete card.dataset.pick;
+  }
+  const n = mv.selected.length;
+  $('mvCount').textContent = n ? `${n} selected` : '';
+  $('mvStart').disabled = n < 2 || n > 4;
+  $('mvStart').textContent = mv.session ? 'Restart multi-view' : 'Start multi-view';
+}
+
+function toggleMvPick(path) {
+  const i = mv.selected.indexOf(path);
+  if (i >= 0) mv.selected.splice(i, 1);
+  else if (mv.selected.length < 4) mv.selected.push(path);
+  else { showBanner('Multi-view takes at most 4 channels.'); setTimeout(() => showBanner(null), 3000); }
+  refreshMvSelection();
+}
+
+$('mvStart').addEventListener('click', () => startMosaic(mv.selected));
+
+async function startMosaic(channels) {
+  if (channels.length < 2) return;
+  openPlayer('Multi-view', channels.length + ' channels');
+  $('scrub').hidden = true;
+  setOverlay('Tuning the channels and starting the mosaic…');
+  try {
+    const { body } = await api('/api/mosaic', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ channels })
+    });
+    installMosaic(body);
+  } catch (err) {
+    setOverlay(`Could not start multi-view. ${err.message}`);
+  }
+}
+
+/* Wire up a running mosaic session in the player: attach the single stream, show the control
+   bar, and reset the audio/rotate state. Used by both startMosaic and reattachMosaic. */
+function installMosaic(session) {
+  mv.session = session;
+  mv.audioPane = 0;
+  state.media = { mosaic: true, live: true, duration: 0, id: session.id };
+  $('playerSub').textContent = (session.channels || []).map(c => c.number).join(' · ');
+
+  // Mobile browsers block autoplay WITH sound — video.play() just rejects and the picture never
+  // starts, leaving the tuning overlay up for ever. Muted autoplay is allowed everywhere, so
+  // start muted and lift it on the first real interaction (a pane tap, a tap on the picture, an
+  // arrow key).
+  video.muted = true;
+  mv.muted = true;
+
+  attach(session.url);
+  renderMosaicPanes(session.channels || []);
+  $('mosaicBar').hidden = false;
+  startRotate();          // the audio auto-cycles by default
+  watchMosaic();
+  refreshMvSelection();   // just the "Restart multi-view" label — don't rebuild the list
+}
+
+function renderMosaicPanes(channels) {
+  $('mosaicPanes').replaceChildren(...channels.map((c, i) => {
+    const b = el('button', 'ghost mosaic-pane', `${i + 1} ${c.callSign || c.number || ''}`.trim());
+    b.setAttribute('aria-pressed', String(i === mv.audioPane));
+    b.addEventListener('click', () => { stopRotate(); setAudioPane(i); });
+    return b;
+  }));
+}
+
+// Lift the mute a mosaic starts with (see installMosaic). Called from the first real gesture:
+// a pane button, a tap on the picture, or an arrow key — all of which count as user activation.
+function mvUnmute() {
+  if (!mv.muted) return;
+  mv.muted = false;
+  video.muted = false;
+  video.play().catch(() => { /* already playing */ });
+  if (state.media && state.media.mosaic) setOverlay(null);
+}
+
+// Point the sound at pane i — an instant audio-track switch, because the composite carries every
+// pane's audio as a rendition and nothing on the server has to change.
+function setAudioPane(i) {
+  mvUnmute();
+  const tracks = hls && hls.audioTracks ? hls.audioTracks.length : 0;
+  if (tracks && i >= 0 && i < tracks) hls.audioTrack = i;
+  mv.audioPane = i;
+  for (const [k, b] of [...$('mosaicPanes').children].entries()) {
+    b.setAttribute('aria-pressed', String(k === i));
+  }
+  // Move the yellow box on the composite to this pane. Fire-and-forget: the box lagging the
+  // sound by a fraction of a second, or not moving at all, is harmless.
+  if (mv.session) {
+    fetch(`/api/mosaic/${mv.session.id}/audio`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pane: i })
+    }).catch(() => { /* best effort */ });
+  }
+}
+
+function cycleAudioPane(delta) {
+  const count = (mv.session && mv.session.channels || []).length || 1;
+  setAudioPane((mv.audioPane + delta + count) % count);
+}
+
+// --- audio auto-cycle (on by default) ---
+function startRotate() {
+  stopRotate();
+  const secs = parseInt($('mosaicRotateSecs').value, 10) || 45;
+  mv.rotateTimer = setInterval(() => cycleAudioPane(1), secs * 1000);
+  $('mosaicRotateBtn').setAttribute('aria-pressed', 'true');
+}
+function stopRotate() {
+  clearInterval(mv.rotateTimer);
+  mv.rotateTimer = null;
+  $('mosaicRotateBtn').setAttribute('aria-pressed', 'false');
+}
+function toggleRotate() { mv.rotateTimer ? stopRotate() : startRotate(); }
+
+$('mosaicRotateBtn').addEventListener('click', toggleRotate);
+$('mosaicRotateSecs').addEventListener('change', () => { if (mv.rotateTimer) startRotate(); });
+
+/* Poll so a mosaic transcoder that dies is reported rather than looking like a frozen picture.
+   No keepalive is sent — a mosaic holds tuners and is left to the server's idle reaper, exactly
+   like a plain live stream. */
+let mosaicWatch = null;
+function watchMosaic() {
+  clearInterval(mosaicWatch);
+  mosaicWatch = setInterval(async () => {
+    if (!mv.session) return;
+    try {
+      const { body } = await api(`/api/mosaic/${mv.session.id}`);
+      if (body.finished) setOverlay(`Multi-view stopped. ${body.lastError || ''}`);
+    } catch (err) {
+      if (err.status === 404) { setOverlay('Multi-view has ended.'); teardownMosaic(false); }
+    }
+  }, 10000);
+}
+
+async function reattachMosaic() {
+  try {
+    const { body } = await api('/api/mosaic');
+    if (body.running && (!mv.session || mv.session.id !== body.id)) {
+      openPlayer('Multi-view', (body.channels || []).length + ' channels');
+      $('scrub').hidden = true;
+      installMosaic(body);
+    }
+  } catch { /* nothing running, or the endpoint is unreachable */ }
+}
+
+function teardownMosaic(stopServer) {
+  clearInterval(mosaicWatch);
+  stopRotate();
+  video.muted = false;
+  mv.muted = false;
+  $('mosaicBar').hidden = true;
+  const session = mv.session;
+  mv.session = null;
+  if (stopServer && session) {
+    fetch(`/api/mosaic/${session.id}/stop`, { method: 'POST' }).catch(() => { /* best effort */ });
+  }
+  refreshMvSelection();
+}
+
+/* The arrows drive the sound while a mosaic is playing. Left/right step it through the panes and
+   pin it there; up/down hand it back to the auto-cycle — and step once straight away as well as
+   re-arming the timer, because without that immediate step the press has no visible or audible
+   effect for a whole interval and reads as a dead key. In full screen there is no chrome on
+   screen, so the pane change is the only feedback there is.
+
+   Capture phase, and no "are they typing" guard: with the mosaic player up there is nothing on
+   screen to type into, and the player's own space/F handler further down must not eat these. */
+document.addEventListener('keydown', (e) => {
+  if (!state.media || !state.media.mosaic || $('player').hidden) return;
+  const k = e.key;
+  if (k === 'ArrowLeft') {
+    e.preventDefault(); mvUnmute(); stopRotate(); cycleAudioPane(-1);
+  } else if (k === 'ArrowRight') {
+    e.preventDefault(); mvUnmute(); stopRotate(); cycleAudioPane(1);
+  } else if (k === 'ArrowUp' || k === 'ArrowDown') {
+    e.preventDefault(); mvUnmute(); startRotate(); cycleAudioPane(1);
+  } else if (k === 'Enter' || k === ' ') {
+    mvUnmute();
+  }
+}, true);
 
 // ------------------------------------------------------------------- recordings view
 
@@ -507,7 +758,8 @@ function showLiveTitle(channel, airing) {
 /// Re-read what is on, but only once the programme in the heading has actually ended.
 /// /api/now is served from the cached guide, so this costs the Tablo nothing.
 async function refreshLiveTitle() {
-  if (!state.media || !state.media.live || Date.now() < liveTitleUntil) return;
+  // A mosaic is several channels at once, so there is no single programme to name.
+  if (!state.media || !state.media.live || state.media.mosaic || Date.now() < liveTitleUntil) return;
   try {
     const { body } = await api('/api/now');
     state.now = body;
@@ -555,6 +807,9 @@ function setOverlay(message, subtle) {
 let startTicket = 0;
 
 async function startSession(path, live, position, duration) {
+  // Picking a programme while multi-view is up means the mosaic has to go: it is holding the
+  // tuner this is about to ask for, and the server would refuse rather than take it back.
+  if (mv.session) teardownMosaic(true);
   await stopSession();          // bumps the ticket, superseding anything still starting
   const ticket = ++startTicket;
 
@@ -597,7 +852,11 @@ function attach(url) {
       // The playlist grows as ffmpeg transcodes, so keep hls.js patient about gaps and let it
       // reload the playlist often enough to notice new segments.
       lowLatencyMode: false,
-      liveSyncDurationCount: 4,
+      // The mosaic plays closer to the live edge: the yellow "this pane has the sound" box is
+      // baked into the video by the server, so the further behind live we play, the longer it
+      // lags the (client-side, instant) audio switch. Two segments back instead of four — and
+      // the mosaic's segments are half the length, so the cushion is a quarter of live TV's.
+      liveSyncDurationCount: (state.media && state.media.mosaic) ? 2 : 4,
       manifestLoadingMaxRetry: 6,
       levelLoadingMaxRetry: 10,
       fragLoadingMaxRetry: 6
@@ -628,6 +887,13 @@ function attach(url) {
 }
 
 video.addEventListener('playing', () => setOverlay(null));
+
+// Mosaic: the picture plays muted until a gesture (see installMosaic / mvUnmute). Once it is
+// running, say the sound is waiting; a tap on the picture is one of the gestures that lifts it.
+video.addEventListener('playing', () => {
+  if (mv.session && mv.muted) setOverlay('🔇  Tap a channel for sound', true);
+});
+$('playerStage').addEventListener('click', () => { if (mv.session) mvUnmute(); });
 
 // Live HLS stalls for a moment now and then at the live edge. Only say so if it lasts, and
 // then only as a small badge — blanking the picture over a half-second hiccup reads as broken.
@@ -742,6 +1008,9 @@ async function stopSession() {
 function closePlayer() {
   $('player').hidden = true;
   $('scrim').hidden = true;
+  // A mosaic is not a StreamManager session, so stopSession() below would leave it running —
+  // with every tuner in the box — until the idle reaper noticed.
+  if (mv.session) teardownMosaic(true);
   state.media = null;
   stopSession();
 }
@@ -788,6 +1057,8 @@ document.addEventListener('fullscreenchange', () =>
 // A tuner stays busy while anything pulls segments, so tell the server on the way out.
 window.addEventListener('pagehide', () => {
   if (state.play) navigator.sendBeacon(`/api/stop/${state.play.sessionId}`);
+  // A mosaic holds every tuner, so waiting 90s for the idle reaper is worth avoiding.
+  if (mv.session) navigator.sendBeacon(`/api/mosaic/${mv.session.id}/stop`);
 });
 
 // ---------------------------------------------------------------------------- scrubber

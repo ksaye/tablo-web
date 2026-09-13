@@ -33,6 +33,10 @@ decode natively.
 - **Guide** — a scrolling 14-day grid, showing what is already scheduled to record. It is
   loaded once a day, in the small hours, because a full load is the hardest thing anything
   does to the DVR.
+- **Multi-view** — 2–4 live channels tiled into one picture, the way a sports bar shows a
+  Sunday. The server composites them into a *single* stream, so the browser decodes one video,
+  not four; the sound follows whichever pane you choose, or cycles between them on a timer, and
+  a yellow border says which pane you are listening to. Every pane is a tuner.
 - **Free streaming channels** — the FAST channels on your account appear beside the antenna
   ones, with their own listings, marked `FREE`. They play straight from the channel's CDN,
   so they cost no tuner and no transcode — but nothing can record them.

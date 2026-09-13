@@ -27,7 +27,8 @@ COPY --from=build /app .
 
 ENV TABLOWEB_URLS=http://0.0.0.0:8787 \
     TABLOWEB_CONFIG_DIR=/config \
-    TABLOWEB_STREAM_DIR=/var/tmp/tabloweb-stream
+    TABLOWEB_STREAM_DIR=/var/tmp/tabloweb-stream \
+    TABLOWEB_MOSAIC_DIR=/var/tmp/tabloweb-mosaic
 
 # Credentials and the data-protection keys that encrypt them and sign session cookies. Mount it,
 # or every restart is a fresh sign-in for everybody.

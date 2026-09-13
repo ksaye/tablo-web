@@ -86,6 +86,40 @@ is far more likely to be a Tailscale or headscale tailnet — the same household
 way. Behind a reverse proxy this is compared against the address in `X-Forwarded-For`, so make
 sure the proxy sets it, or every viewer will look remote.
 
+## Multi-view
+
+| Variable | Default | |
+|---|---|---|
+| `TABLOWEB_MOSAIC_DIR` | `mosaic/` beside the binary | Where the tiled segments are written |
+| `TABLOWEB_MOSAIC_DEINT` | on | Deinterlace each pane (`0` to skip) |
+| `TABLOWEB_MOSAIC_LOWRES` | `0` | Decode MPEG-2 at half (`1`) or quarter (`2`) resolution |
+| `TABLOWEB_MOSAIC_BOX_THICKNESS` | `8` | Pixel width of the "this pane has the sound" border |
+
+**One mosaic at a time, and it takes every tuner it can get.** Starting one stops any plain live
+stream to free a tuner, because a pane that cannot tune just shows black. Recordings are left
+alone: a recording in progress simply means one fewer pane locks. Like a live stream it is reaped
+90 seconds after the last segment request, which is what gives the tuners back.
+
+**It is one stream, not four.** ffmpeg lays the channels on a 1080p canvas and encodes a single
+H.264 HLS output whose audio renditions are the individual panes, so moving the sound is a track
+switch in the player and costs nothing. That is also why the yellow border marking the active
+pane is drawn *into* the video: in full screen the picture is all there is, and a border in the
+page would not be on screen. It is repositioned by a runtime command to the running ffmpeg — no
+restart, no retune — and so it trails the (instant) audio switch by however far behind the live
+edge the player is sitting. Segments are 2 seconds rather than live TV's 4 to keep that short.
+
+**Budget for it.** Four panes means four simultaneous MPEG-2 decodes, which is the expensive
+half: on a GPU-encoding machine the encoder is a rounding error and the decoding is what you
+feel. If the transcode cannot hold realtime the picture stalls every few seconds — reach for
+`TABLOWEB_MOSAIC_LOWRES=1` (visibly softer, roughly four times cheaper to decode) or pick fewer
+panes. Check the *network* first, though: four panes pull around 45 Mbps in bursts, and a DVR on
+a 100 Mbps link or weak Wi-Fi will starve the transcoder long before the CPU runs out.
+
+**`TABLOWEB_MOSAIC_DEINT=0` is rarely what you want.** Deinterlacing is per-frame — `yadif` only
+touches frames flagged interlaced — so the progressive channels pass through untouched either
+way, and turning it off leaves visible motion judder on the 1080i ones. It looks acceptable on a
+phone and bad on a television.
+
 ## Encoding
 
 | Variable | Default | |

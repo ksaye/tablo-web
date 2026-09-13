@@ -101,6 +101,36 @@ look for a stalled player rather than a server problem.
 `TABLOWEB_MAX_STREAMS` (default 3) was reached, and the least recently watched session was
 dropped to make room. Raise it if the machine and the DVR's tuner count can take it.
 
+## Multi-view
+
+**"Fewer than two of the chosen channels would tune."**
+Every pane is a tuner, and the DVR has four. Something else is using them — a recording in
+progress, most often, which multi-view deliberately does not interrupt. Check what is recording,
+or pick fewer panes. If channels from one transmitter all fail while others tune, that is
+reception rather than tuners: see [channels that will not play](#channels-that-will-not-play).
+
+**The picture starts muted.**
+By design. Mobile browsers refuse to autoplay video with sound — `play()` is simply rejected and
+the picture never appears — so the mosaic starts muted and the first tap, click or arrow key
+lifts it. Tapping a pane button both unmutes and points the sound at that pane.
+
+**It buffers every few seconds.**
+The transcode is not holding realtime. Look at the network before the CPU: four panes pull around
+45 Mbps in bursts, so a DVR on a 100 Mbps link — or one on weak Wi-Fi — starves the transcoder
+while ffmpeg sits idle. `ffmpeg` using well under a core per pane while the picture stalls is the
+tell. If it really is the machine, `TABLOWEB_MOSAIC_LOWRES=1` makes decoding about four times
+cheaper at a visibly softer picture, and three panes cost noticeably less than four.
+
+**The yellow border lags the sound.**
+It is drawn into the video on the server, so it arrives with the picture — a second or so behind
+a switch the player made instantly. It cannot be made exact without drawing it in the page, and
+the page is not on screen in full screen. Segments are already short to keep the gap small.
+
+**The sound will not move between panes.**
+The panes are audio renditions of one stream, so switching needs a player that can change audio
+track mid-stream. Every browser tested does; if yours does not, the picture keeps playing with
+the first pane's audio.
+
 ## Logs
 
 ```bash

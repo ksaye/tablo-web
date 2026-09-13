@@ -89,7 +89,8 @@ public static class Login
             // An expired session must not answer a fetch with a login page — the browser would
             // quietly try to parse HTML as JSON. Say 401 and let the page redirect.
             if (context.Request.Path.StartsWithSegments("/api") ||
-                context.Request.Path.StartsWithSegments("/stream"))
+                context.Request.Path.StartsWithSegments("/stream") ||
+                context.Request.Path.StartsWithSegments("/mosaic"))
             {
                 context.Response.StatusCode = StatusCodes.Status401Unauthorized;
                 context.Response.ContentType = "application/json";

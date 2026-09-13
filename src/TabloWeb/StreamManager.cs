@@ -40,9 +40,9 @@ public sealed class StreamManager : IDisposable
     private readonly Timer _reaper;
 
     /// <summary>Which video encoder the transcodes actually use, decided once at startup.</summary>
-    private readonly Encoder _encoder;
+    private readonly VideoEncoder _encoder;
 
-    private bool Nvenc => _encoder == Encoder.Nvenc;
+    private bool Nvenc => _encoder == VideoEncoder.Nvenc;
 
     /// <summary>
     /// Decode and deinterlace on the GPU as well, rather than only encoding there. Cheaper again
@@ -77,10 +77,6 @@ public sealed class StreamManager : IDisposable
     /// </summary>
     private readonly string _x264Preset = Env("TABLOWEB_X264_PRESET", "veryfast");
 
-    /// <summary>Cores each software transcode may use. 0 lets ffmpeg decide.</summary>
-    private readonly string _threads = Env("TABLOWEB_THREADS", "0");
-
-    private enum Encoder { Software, Nvenc, Vaapi }
 
     /// <summary>
     /// On the local network (or a VPN into it, which is the same house by another road) there is
@@ -104,6 +100,61 @@ public sealed class StreamManager : IDisposable
 
     private static string Env(string key, string fallback) =>
         Environment.GetEnvironmentVariable(key) is { Length: > 0 } v ? v : fallback;
+
+    // ------------------------------------------------------- shared with MosaicManager
+
+    /// <summary>The ffmpeg these transcodes use. Multi-view spawns its own and wants the same one.</summary>
+    public string FfmpegPath => _ffmpeg;
+
+    /// <summary>Which encoder the startup test encode actually proved works.</summary>
+    public VideoEncoder Encoder => _encoder;
+
+    /// <summary>The VA-API render node, for the callers that have to open it themselves.</summary>
+    public string VaapiDevice => _vaapiDevice;
+
+    /// <summary>
+    /// The H.264 encoder arguments for one HLS output, shared with <see cref="MosaicManager"/> so
+    /// a mosaic pane looks like live TV does.
+    ///
+    /// NVENC's cq is a much gentler dial than x264's crf — cq 23 with a 6M cap sat at 6 Mbps flat,
+    /// nearly triple what libx264 produced for the same picture. cq 30 measures at ~3.2 Mbps
+    /// average on a 720p60 channel, letting quality drive the bitrate while maxrate still catches
+    /// the spikes. `-b:v 0` is what makes the quality target apply at all. VA-API drivers vary a
+    /// lot in what they accept, so it gets constant-quality with a rate cap and no B-frames.
+    ///
+    /// <paramref name="gopSize"/> is the keyframe interval: every HLS segment has to start on one,
+    /// so it must divide into the segment length. Does NOT include -pix_fmt — that is the caller's
+    /// call, because a GPU path wants the frames left on the card.
+    /// </summary>
+    public static IReadOnlyList<string> VideoEncoderArgs(VideoEncoder encoder, Quality quality, int gopSize = 120) =>
+        encoder switch
+        {
+            VideoEncoder.Vaapi =>
+            [
+                "-c:v", "h264_vaapi", "-rc_mode", "CQP", "-qp", quality.Crf,
+                "-maxrate", quality.MaxRate, "-bufsize", quality.BufSize, "-g", gopSize.ToString()
+            ],
+            VideoEncoder.Nvenc =>
+            [
+                "-c:v", "h264_nvenc", "-gpu", "0", "-preset", "p5", "-tune", "hq",
+                "-rc", "vbr", "-cq", quality.Cq, "-b:v", "0",
+                "-maxrate", quality.MaxRate, "-bufsize", quality.BufSize,
+                "-profile:v", "high", "-g", gopSize.ToString(), "-bf", "2"
+            ],
+            _ =>
+            [
+                "-c:v", "libx264", "-preset", Env("TABLOWEB_X264_PRESET", "veryfast"), "-crf", quality.Crf,
+                "-maxrate", quality.MaxRate, "-bufsize", quality.BufSize,
+                "-threads", Env("TABLOWEB_THREADS", "0"),
+                "-g", gopSize.ToString(), "-keyint_min", gopSize.ToString(), "-sc_threshold", "0"
+            ]
+        };
+
+    /// <summary>Point another ffmpeg at the same card this one uses. No-op off NVIDIA.</summary>
+    public void PrepareGpu(ProcessStartInfo psi)
+    {
+        if (Nvenc) ApplyGpuEnvironment(psi);
+    }
 
     public StreamManager(TabloSession tablo, ILogger<StreamManager> log, IHostEnvironment env)
     {
@@ -151,7 +202,7 @@ public sealed class StreamManager : IDisposable
     /// `ffmpeg -encoders` says nothing about a driver being loaded, a card being reachable from
     /// this process, or a render node being readable inside a container.
     /// </summary>
-    private Encoder DetectEncoder()
+    private VideoEncoder DetectEncoder()
     {
         var choice = (Environment.GetEnvironmentVariable("TABLOWEB_ENCODER") ?? "auto").ToLowerInvariant();
 
@@ -159,33 +210,33 @@ public sealed class StreamManager : IDisposable
         {
             case "cpu" or "x264" or "libx264" or "software":
                 _log.LogInformation("Encoding in software (libx264, preset {Preset}) by configuration", _x264Preset);
-                return Encoder.Software;
+                return VideoEncoder.Software;
 
             case "nvenc" or "nvidia" or "cuda" or "gpu":
-                if (TestEncode(Encoder.Nvenc, out var nvencError)) return Announce(Encoder.Nvenc);
+                if (TestEncode(VideoEncoder.Nvenc, out var nvencError)) return Announce(VideoEncoder.Nvenc);
                 _log.LogError("TABLOWEB_ENCODER={Choice} but the test encode failed; using libx264 instead: {Error}",
                     choice, nvencError);
-                return Encoder.Software;
+                return VideoEncoder.Software;
 
             case "vaapi" or "qsv" or "intel" or "amd":
-                if (TestEncode(Encoder.Vaapi, out var vaapiError)) return Announce(Encoder.Vaapi);
+                if (TestEncode(VideoEncoder.Vaapi, out var vaapiError)) return Announce(VideoEncoder.Vaapi);
                 _log.LogError("TABLOWEB_ENCODER={Choice} but the test encode failed; using libx264 instead: {Error}",
                     choice, vaapiError);
-                return Encoder.Software;
+                return VideoEncoder.Software;
 
             default:
-                if (TestEncode(Encoder.Nvenc, out var whyNotNvenc)) return Announce(Encoder.Nvenc);
-                if (TestEncode(Encoder.Vaapi, out var whyNotVaapi)) return Announce(Encoder.Vaapi);
+                if (TestEncode(VideoEncoder.Nvenc, out var whyNotNvenc)) return Announce(VideoEncoder.Nvenc);
+                if (TestEncode(VideoEncoder.Vaapi, out var whyNotVaapi)) return Announce(VideoEncoder.Vaapi);
                 _log.LogInformation(
                     "No usable GPU encoder; encoding in software (libx264, preset {Preset}). NVENC: {Nvenc} VA-API: {Vaapi}",
                     _x264Preset, whyNotNvenc, whyNotVaapi);
-                return Encoder.Software;
+                return VideoEncoder.Software;
         }
     }
 
-    private Encoder Announce(Encoder encoder)
+    private VideoEncoder Announce(VideoEncoder encoder)
     {
-        if (encoder == Encoder.Nvenc)
+        if (encoder == VideoEncoder.Nvenc)
             _log.LogInformation("Encoding on the GPU (h264_nvenc, CUDA_VISIBLE_DEVICES={Gpu}){Decode}",
                 _gpu ?? "PCI device 0", _hwDecode ? ", decoding on the GPU too" : "");
         else
@@ -194,15 +245,15 @@ public sealed class StreamManager : IDisposable
     }
 
     /// <summary>Encode a second of colour bars and see whether it comes out.</summary>
-    private bool TestEncode(Encoder encoder, out string error)
+    private bool TestEncode(VideoEncoder encoder, out string error)
     {
         error = "";
         try
         {
             var args = new List<string> { "-hide_banner", "-loglevel", "error", "-nostdin" };
-            if (encoder == Encoder.Vaapi) args.AddRange(["-vaapi_device", _vaapiDevice]);
+            if (encoder == VideoEncoder.Vaapi) args.AddRange(["-vaapi_device", _vaapiDevice]);
             args.AddRange(["-f", "lavfi", "-i", "testsrc2=size=1280x720:rate=30", "-frames:v", "30"]);
-            args.AddRange(encoder == Encoder.Nvenc
+            args.AddRange(encoder == VideoEncoder.Nvenc
                 ? ["-c:v", "h264_nvenc", "-gpu", "0"]
                 : ["-vf", "format=nv12,hwupload", "-c:v", "h264_vaapi"]);
             args.AddRange(["-f", "null", "-"]);
@@ -210,7 +261,7 @@ public sealed class StreamManager : IDisposable
             var psi = new ProcessStartInfo(_ffmpeg)
             { RedirectStandardError = true, RedirectStandardOutput = true, UseShellExecute = false };
             foreach (var a in args) psi.ArgumentList.Add(a);
-            if (encoder == Encoder.Nvenc) ApplyGpuEnvironment(psi);
+            if (encoder == VideoEncoder.Nvenc) ApplyGpuEnvironment(psi);
 
             using var p = Process.Start(psi)!;
             var stderr = p.StandardError.ReadToEnd();
@@ -383,7 +434,7 @@ public sealed class StreamManager : IDisposable
         // The comma inside min() has to be escaped or ffmpeg reads it as the next filter.
         if (_maxHeight > 0) chain += $",scale=-2:min(ih\\,{_maxHeight})";
         // VA-API encodes from surfaces in the GPU's own memory, so the last step is to put them there.
-        if (_encoder == Encoder.Vaapi) chain += ",format=nv12,hwupload";
+        if (_encoder == VideoEncoder.Vaapi) chain += ",format=nv12,hwupload";
         return chain;
     }
 
@@ -404,7 +455,7 @@ public sealed class StreamManager : IDisposable
 
         // VA-API needs the render node opened up front. Decoding stays in software: broadcast
         // MPEG-2 off an aerial is often ragged, and the software decoder is the forgiving one.
-        if (_encoder == Encoder.Vaapi)
+        if (_encoder == VideoEncoder.Vaapi)
             args.AddRange(["-vaapi_device", _vaapiDevice]);
 
         // Input seek: cheap, and the only way to start a recording part-way through, since we
@@ -432,39 +483,14 @@ public sealed class StreamManager : IDisposable
         var quality = session.Remote ? RemoteQuality : LocalQuality;
 
         // A fixed GOP with scene-cut detection off keeps every segment starting on a keyframe
-        // and independently decodable, which is what makes seeking work.
-        if (_encoder == Encoder.Vaapi)
-            // VA-API drivers vary a lot in what they accept. Constant-quality with a rate cap is
-            // the combination Intel and AMD both handle; B-frames are left out because some AMD
-            // drivers refuse them outright.
-            args.AddRange([
-                "-c:v", "h264_vaapi", "-rc_mode", "CQP", "-qp", quality.Crf,
-                "-maxrate", quality.MaxRate, "-bufsize", quality.BufSize, "-g", "120"
-            ]);
-        else if (Nvenc)
-            // NVENC's cq is a much gentler dial than x264's crf — cq 23 with a 6M cap sat at
-            // 6 Mbps flat, nearly triple what libx264 produced for the same picture. cq 30
-            // measures at ~3.2 Mbps average on a 720p60 channel, letting quality drive the
-            // bitrate while maxrate still catches the spikes. `-b:v 0` is what makes the
-            // quality target apply at all.
-            args.AddRange([
-                "-c:v", "h264_nvenc", "-gpu", "0", "-preset", "p5", "-tune", "hq",
-                "-rc", "vbr", "-cq", quality.Cq, "-b:v", "0",
-                "-maxrate", quality.MaxRate, "-bufsize", quality.BufSize,
-                "-profile:v", "high", "-g", "120", "-bf", "2"
-            ]);
-        else
-            args.AddRange([
-                "-c:v", "libx264", "-preset", _x264Preset, "-crf", quality.Crf,
-                "-maxrate", quality.MaxRate, "-bufsize", quality.BufSize,
-                "-threads", _threads,
-                "-g", "120", "-keyint_min", "120", "-sc_threshold", "0"
-            ]);
+        // and independently decodable, which is what makes seeking work. Multi-view uses the same
+        // arguments with a shorter GOP — see VideoEncoderArgs.
+        args.AddRange(VideoEncoderArgs(_encoder, quality));
 
         // Forcing a pixel format would pull frames the GPU already holds back into system memory,
         // undoing the point of keeping them there; the software path wants it pinned for browser
         // compatibility.
-        if (_encoder == Encoder.Software || (Nvenc && !_hwDecode))
+        if (_encoder == VideoEncoder.Software || (Nvenc && !_hwDecode))
             args.AddRange(["-pix_fmt", "yuv420p"]);
 
         args.AddRange([
@@ -590,6 +616,9 @@ public sealed class StreamManager : IDisposable
         foreach (var id in _sessions.Keys.ToList()) Stop(id);
     }
 }
+
+/// <summary>Which video encoder the transcodes use, decided once at startup by a test encode.</summary>
+public enum VideoEncoder { Software, Nvenc, Vaapi }
 
 /// <summary>Encoder settings for one class of viewer. See the profiles on StreamManager.</summary>
 public sealed record Quality(string Cq, string Crf, string MaxRate, string BufSize, string AudioRate);

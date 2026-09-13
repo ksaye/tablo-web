@@ -23,6 +23,9 @@ services:
       # is worth keeping. Mount a disk here if the container filesystem is small: a recording is
       # kept in full while it is being watched, so allow a few GB per concurrent viewer.
       # - ./stream:/var/tmp/tabloweb-stream
+      # The same again for multi-view's tiled output. It is a 40-second sliding window, so it
+      # stays small whatever happens.
+      # - ./mosaic:/var/tmp/tabloweb-mosaic
 
     environment:
       # Software encoding. `auto` would look for a GPU first; this file has no GPU to find, so
