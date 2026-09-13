@@ -35,8 +35,8 @@ decode natively.
   does to the DVR.
 - **Multi-view** — 2–4 live channels tiled into one picture, the way a sports bar shows a
   Sunday. The server composites them into a *single* stream, so the browser decodes one video,
-  not four; the sound follows whichever pane you choose, or cycles between them on a timer, and
-  a yellow border says which pane you are listening to. Every pane is a tuner.
+  not four; tap a pane — or use the arrow keys — to move the sound to it, or let it cycle between
+  them on a timer, with a yellow border marking the one you are hearing. Every pane is a tuner.
 - **Free streaming channels** — the FAST channels on your account appear beside the antenna
   ones, with their own listings, marked `FREE`. They play straight from the channel's CDN,
   so they cost no tuner and no transcode — but nothing can record them.

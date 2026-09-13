@@ -25,6 +25,11 @@ Watch 2–4 live channels at once, tiled into a single picture.
 - Re-shot `guide.png`, `live-tv.png` and `recordings.png`: their tab bars predated the
   **Multi-view** tab, so the first thing anyone saw in the README contradicted the feature list.
 
+- **Tap a pane to move the sound to it.** In full screen the button bar is outside the element
+  that goes full screen, so a phone had no way to change the audio pane at all — and the overlay
+  hint has always said "tap a channel for sound". The pane layout is mirrored from the server's,
+  since the composite arrives as one flat picture with nothing in the DOM to hit-test.
+
 Carried over with it, from running this in anger:
 
 - **Mosaics start muted.** Mobile browsers reject autoplay with sound outright, leaving the

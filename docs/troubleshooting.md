@@ -126,6 +126,13 @@ It is drawn into the video on the server, so it arrives with the picture — a s
 a switch the player made instantly. It cannot be made exact without drawing it in the page, and
 the page is not on screen in full screen. Segments are already short to keep the gap small.
 
+**How do I change which pane I am listening to?**
+Tap or click the pane itself, or use the numbered buttons under the picture. On a keyboard the
+arrow keys work too: left and right step through the panes and pin the sound there, up and down
+hand it back to the auto-cycle. In full screen the button bar is not on screen, so tapping a pane
+(or the arrow keys) is the way — and re-arming the auto-cycle from a touchscreen means leaving
+full screen to reach the bar.
+
 **The sound will not move between panes.**
 The panes are audio renditions of one stream, so switching needs a player that can change audio
 track mid-stream. Every browser tested does; if yours does not, the picture keeps playing with

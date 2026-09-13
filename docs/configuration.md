@@ -96,8 +96,10 @@ are laid out:
 ![Choosing the channels](images/multi-view-picker.png)
 
 While it plays, the bar under the picture moves the sound between panes and controls the
-auto-cycle. The yellow border follows the sound — here on pane 3 — and in full screen, where
-there is no bar, the arrow keys do the same job:
+auto-cycle. The yellow border follows the sound — here on pane 3. **Tapping or clicking a pane in
+the picture does the same thing**, which is the control that still works in full screen, where
+the bar is off screen: on a keyboard the arrow keys step through the panes (up or down hands the
+sound back to the auto-cycle), and on a phone you tap the pane you want to hear.
 
 ![The player, with the pane controls](images/multi-view-player.png)
 

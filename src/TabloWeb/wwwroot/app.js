@@ -893,7 +893,53 @@ video.addEventListener('playing', () => setOverlay(null));
 video.addEventListener('playing', () => {
   if (mv.session && mv.muted) setOverlay('🔇  Tap a channel for sound', true);
 });
-$('playerStage').addEventListener('click', () => { if (mv.session) mvUnmute(); });
+/* Tapping a pane in the picture moves the sound to it. This is the only control a phone has in
+   full screen — the button bar lives outside #playerStage and so is not on screen there, and
+   there are no arrow keys to fall back on. It is also what the "tap a channel for sound" hint
+   has always promised. */
+$('playerStage').addEventListener('click', (event) => {
+  if (!mv.session) return;
+  mvUnmute();
+  const pane = paneAtPoint(event.clientX, event.clientY);
+  if (pane >= 0) { stopRotate(); setAudioPane(pane); }
+});
+
+/* Which pane is under a point on screen.
+
+   The layout has to be mirrored from the server's (MosaicManager.Rects) because the composite
+   arrives as one flat picture — there is nothing in the DOM to hit-test. Fractions of the canvas,
+   so they hold at any size. */
+function paneLayout(n) {
+  if (n === 2) return [[0, 0.25, 0.5, 0.5], [0.5, 0.25, 0.5, 0.5]];
+  if (n === 3) return [[0, 0, 0.5, 0.5], [0.5, 0, 0.5, 0.5], [0.25, 0.5, 0.5, 0.5]];
+  return [[0, 0, 0.5, 0.5], [0.5, 0, 0.5, 0.5], [0, 0.5, 0.5, 0.5], [0.5, 0.5, 0.5, 0.5]];
+}
+
+function paneAtPoint(clientX, clientY) {
+  const count = (mv.session && mv.session.channels || []).length;
+  if (count < 2) return -1;
+
+  const box = video.getBoundingClientRect();
+  if (!box.width || !box.height) return -1;
+
+  // In full screen the video is letterboxed inside the element (object-fit: contain), so the
+  // picture is smaller than what was tapped on; windowed it fills the box exactly. Work out the
+  // drawn rectangle, and fall back to the element itself for a tap in the black margins.
+  let fx = (clientX - box.left) / box.width;
+  let fy = (clientY - box.top) / box.height;
+  if (video.videoWidth && video.videoHeight) {
+    const scale = Math.min(box.width / video.videoWidth, box.height / video.videoHeight);
+    const drawnW = video.videoWidth * scale, drawnH = video.videoHeight * scale;
+    const left = box.left + (box.width - drawnW) / 2, top = box.top + (box.height - drawnH) / 2;
+    const px = (clientX - left) / drawnW, py = (clientY - top) / drawnH;
+    if (px >= 0 && px <= 1 && py >= 0 && py <= 1) { fx = px; fy = py; }
+  }
+
+  const hit = paneLayout(count).findIndex(([x, y, w, h]) =>
+    fx >= x && fx < x + w && fy >= y && fy < y + h);
+  // A three-pane grid leaves two corners empty below the top row; a tap there means nothing.
+  return hit;
+}
 
 // Live HLS stalls for a moment now and then at the live edge. Only say so if it lasts, and
 // then only as a small badge — blanking the picture over a half-second hiccup reads as broken.
