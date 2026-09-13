@@ -16,6 +16,7 @@ The image is built from the `Dockerfile` here — a two-stage build that publish
 |---|---|
 | `/config` | The encrypted Tablo credentials and the data-protection keys. **Mount this.** Without it, every `docker compose up --build` signs everyone out and forgets the DVR. |
 | `/var/tmp/tabloweb-stream` | Transcoded segments. Fine inside the container; mount a disk if the container filesystem is small. Allow a few GB per concurrent viewer — a recording keeps every segment it has transcoded so that seeking works. |
+| `/var/tmp/tabloweb-mosaic` | Multi-view's tiled output. Nothing to mount in practice: it is a 40-second sliding window, so it stays small. |
 
 Do not put the stream directory on tmpfs unless you have RAM to spare: a two-hour recording at
 3 Mbps is about 2.7 GB, and it is all held while someone is watching.

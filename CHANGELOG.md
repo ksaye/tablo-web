@@ -32,6 +32,10 @@ Watch 2–4 live channels at once, tiled into a single picture.
 - **The pane bar now follows the picture into full screen**, floating along the bottom, so there
   is a visible control there and not just a gesture — and the auto-cycle can be re-armed without
   leaving full screen.
+- **Verified in the shipped Docker image**, software encoding, four streaming channels: the
+  mosaic starts, plays 1920x1080 with four audio renditions, and holds exactly realtime (30.0s of
+  video per 30s of wall clock) at about six cores. The measured cost is now in
+  [docs/configuration.md](docs/configuration.md).
 - **The browser's own video controls are switched off while a mosaic plays.** On a touchscreen
   their shadow DOM swallows the tap (the first tap only reveals the control bar), so tapping a
   pane did nothing in full screen — reported on an Android phone, and reproduced with a real touch

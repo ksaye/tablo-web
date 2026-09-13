@@ -123,12 +123,20 @@ page would not be on screen. It is repositioned by a runtime command to the runn
 restart, no retune — and so it trails the (instant) audio switch by however far behind the live
 edge the player is sitting. Segments are 2 seconds rather than live TV's 4 to keep that short.
 
-**Budget for it.** Four panes means four simultaneous MPEG-2 decodes, which is the expensive
-half: on a GPU-encoding machine the encoder is a rounding error and the decoding is what you
-feel. If the transcode cannot hold realtime the picture stalls every few seconds — reach for
-`TABLOWEB_MOSAIC_LOWRES=1` (visibly softer, roughly four times cheaper to decode) or pick fewer
-panes. Check the *network* first, though: four panes pull around 45 Mbps in bursts, and a DVR on
-a 100 Mbps link or weak Wi-Fi will starve the transcoder long before the CPU runs out.
+**Budget for it.** Four panes means four simultaneous decodes plus one 1080p30 encode. On a
+GPU-encoding machine the encoder is a rounding error and the decoding is what you feel;
+**in software, a four-pane mosaic measured about six cores** (615% CPU, 1.6 GB, holding exactly
+realtime — 30.0s of video per 30s of wall clock — in the Docker image with `TABLOWEB_ENCODER=cpu`
+and four H.264 streaming channels). Antenna channels cost more again, because broadcast MPEG-2 is
+the expensive thing to decode. If the transcode cannot hold realtime the picture stalls every few
+seconds — reach for `TABLOWEB_MOSAIC_LOWRES=1` (visibly softer, roughly four times cheaper to
+decode) or pick fewer panes. Check the *network* first, though: four panes pull around 45 Mbps in
+bursts, and a DVR on a 100 Mbps link or weak Wi-Fi will starve the transcoder long before the CPU
+runs out.
+
+**A mosaic that starts slowly plays a long way behind live**, which matters only because the
+yellow border is burned into the video: the further behind the player sits, the longer the border
+trails a pane change you made instantly. Software encoding on a busy machine is the usual cause.
 
 **`TABLOWEB_MOSAIC_DEINT=0` is rarely what you want.** Deinterlacing is per-frame — `yadif` only
 touches frames flagged interlaced — so the progressive channels pass through untouched either
