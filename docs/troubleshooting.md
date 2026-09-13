@@ -127,11 +127,16 @@ a switch the player made instantly. It cannot be made exact without drawing it i
 the page is not on screen in full screen. Segments are already short to keep the gap small.
 
 **How do I change which pane I am listening to?**
-Tap or click the pane itself, or use the numbered buttons under the picture. On a keyboard the
-arrow keys work too: left and right step through the panes and pin the sound there, up and down
-hand it back to the auto-cycle. In full screen the button bar is not on screen, so tapping a pane
-(or the arrow keys) is the way — and re-arming the auto-cycle from a touchscreen means leaving
-full screen to reach the bar.
+Tap or click the pane itself, or use the numbered buttons, which follow the picture into full
+screen and sit along the bottom there. On a keyboard the arrow keys work too: left and right step
+through the panes and pin the sound there, up and down hand it back to the auto-cycle.
+
+**The browser's own video controls disappear during multi-view.**
+Deliberately. On a touchscreen their shadow DOM swallows the tap — the first tap only reveals the
+control bar — which made tapping a pane do nothing at all in full screen, where the picture is the
+only thing left to tap. They have nothing to offer a mosaic either: it is live, so there is no
+seeking, and the volume is the device's. Double-tap (or `F`) still toggles full screen, and the
+controls come back the moment multi-view ends.
 
 **The sound will not move between panes.**
 The panes are audio renditions of one stream, so switching needs a player that can change audio

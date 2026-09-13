@@ -293,6 +293,14 @@ video::cue {
   padding: 10px 14px; border-top: 1px solid var(--line);
 }
 .mosaic-panes { display: flex; gap: 6px; flex-wrap: wrap; margin-right: auto; }
+
+/* In full screen the bar is moved inside the stage (see dockMosaicBar), where it has to float
+   over the picture instead of sitting under it. */
+.player-stage:fullscreen .mosaic-bar {
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 5;
+  border-top: 0; background: rgba(13, 17, 23, 0.82);
+  padding-bottom: max(10px, env(safe-area-inset-bottom));
+}
 .mosaic-pane[aria-pressed="true"],
 #mosaicRotateBtn[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #051016; }
 

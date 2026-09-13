@@ -25,10 +25,17 @@ Watch 2–4 live channels at once, tiled into a single picture.
 - Re-shot `guide.png`, `live-tv.png` and `recordings.png`: their tab bars predated the
   **Multi-view** tab, so the first thing anyone saw in the README contradicted the feature list.
 
-- **Tap a pane to move the sound to it.** In full screen the button bar is outside the element
+- **Tap a pane to move the sound to it.** In full screen the button bar was outside the element
   that goes full screen, so a phone had no way to change the audio pane at all — and the overlay
   hint has always said "tap a channel for sound". The pane layout is mirrored from the server's,
   since the composite arrives as one flat picture with nothing in the DOM to hit-test.
+- **The pane bar now follows the picture into full screen**, floating along the bottom, so there
+  is a visible control there and not just a gesture — and the auto-cycle can be re-armed without
+  leaving full screen.
+- **The browser's own video controls are switched off while a mosaic plays.** On a touchscreen
+  their shadow DOM swallows the tap (the first tap only reveals the control bar), so tapping a
+  pane did nothing in full screen — reported on an Android phone, and reproduced with a real touch
+  tap where a mouse click had worked fine. They have nothing to offer a live mosaic anyway.
 
 Carried over with it, from running this in anger:
 

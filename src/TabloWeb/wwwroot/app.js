@@ -334,6 +334,12 @@ function installMosaic(session) {
   video.muted = true;
   mv.muted = true;
 
+  // The browser's own controls have to go while a mosaic plays. On a touchscreen their shadow DOM
+  // swallows the tap — the first one only shows the control bar — so tapping a pane did nothing
+  // at all in full screen, where the picture is the only thing to tap. They offer nothing here
+  // anyway: a mosaic is live, so there is no seeking, and the volume is the device's own.
+  video.controls = false;
+
   attach(session.url);
   renderMosaicPanes(session.channels || []);
   $('mosaicBar').hidden = false;
@@ -437,6 +443,8 @@ function teardownMosaic(stopServer) {
   stopRotate();
   video.muted = false;
   mv.muted = false;
+  video.controls = true;          // back for ordinary playback (see installMosaic)
+  dockMosaicBar(false);
   $('mosaicBar').hidden = true;
   const session = mv.session;
   mv.session = null;
@@ -1097,8 +1105,25 @@ document.addEventListener('keydown', (e) => {
 
 // The custom scrubber lives outside the video, so in full screen the native controls are all
 // there is — fine for live, and for a recording they cover the transcoded part.
-document.addEventListener('fullscreenchange', () =>
-  $('player').classList.toggle('fullscreen', !!document.fullscreenElement));
+document.addEventListener('fullscreenchange', () => {
+  $('player').classList.toggle('fullscreen', !!document.fullscreenElement);
+  dockMosaicBar(!!document.fullscreenElement && !!mv.session);
+});
+
+/* Full screen shows one element and nothing else on the page, and #mosaicBar is not inside it —
+   so the pane buttons vanish exactly when they are the only control left, because the arrow keys
+   are not an option on a touchscreen. Move the bar into the stage for the duration rather than
+   duplicating it, and put it back where the layout expects it afterwards. */
+function dockMosaicBar(intoStage) {
+  const bar = $('mosaicBar');
+  const stage = $('playerStage');
+  if (intoStage) {
+    if (bar.parentElement !== stage) stage.append(bar);
+  } else if (bar.parentElement === stage) {
+    // Its home is the player, immediately before the scrubber.
+    $('player').insertBefore(bar, $('scrub'));
+  }
+}
 
 // A tuner stays busy while anything pulls segments, so tell the server on the way out.
 window.addEventListener('pagehide', () => {
