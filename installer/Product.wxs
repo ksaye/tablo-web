@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  TabloWeb Windows installer.
+
+  Installs the self-contained win-x64 publish output into Program Files, registers TabloWeb as a
+  Windows Service that starts automatically, and drops a Start Menu shortcut that opens the site
+  in a browser.
+
+  Most of wwwroot is harvested from $(var.PublishDir) at build time (see TabloWeb.wixproj) — that
+  is the output of a self-contained win-x64 single-file publish (see README.md's Windows
+  section for the exact command), so there is exactly one thing to keep in sync: publish before
+  building this project. TabloWeb.exe
+  itself, web.config and the static-assets manifest are authored explicitly below instead of
+  harvested, because the exe has to live in the same component as its ServiceInstall — a file
+  can only belong to one component, so it cannot also come from the harvested group.
+
+  UpgradeCode is permanent — generated once for this product and never to change. Every future
+  release keeps it so a newer MSI upgrades the existing install (MajorUpgrade below) rather than
+  sitting beside it as a second, conflicting product. See UpdateChecker.cs for the piece that
+  downloads a future version of this MSI and launches it.
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="TabloWeb"
+           Manufacturer="Kevin Saye"
+           Version="$(var.Version)"
+           UpgradeCode="bae3d4e2-abf9-4505-a9ad-9d4dabf495a7"
+           Compressed="yes"
+           InstallerVersion="500"
+           Scope="perMachine">
+
+    <SummaryInformation
+      Description="TabloWeb — a browser front end for the Tablo 4th-generation DVR"
+      Manufacturer="Kevin Saye" />
+
+    <!--
+      A major upgrade in place: installing a newer MSI over an older install removes the old
+      files/service registration and puts the new ones down, rather than requiring an uninstall
+      first. This is what makes the in-app "Update now" button (UpdateChecker.InstallAsync)
+      usable — it just runs `msiexec /i <newer.msi> /qn`.
+    -->
+    <MajorUpgrade DowngradeErrorMessage="A newer version of TabloWeb is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="TabloWeb">
+        <Directory Id="WwwRootFolder" Name="wwwroot" />
+      </Directory>
+    </StandardDirectory>
+
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="AppProgramMenuFolder" Name="TabloWeb" />
+    </StandardDirectory>
+
+    <ComponentGroup Id="ServiceComponents" Directory="INSTALLFOLDER">
+      <Component Id="TabloWebService" Guid="*">
+        <File Id="TabloWebServiceExe" Source="$(var.PublishDir)\TabloWeb.exe" KeyPath="yes" />
+
+        <!--
+          LocalSystem, not a lesser account: the app needs to reach arbitrary LAN addresses (the
+          Tablo itself, wherever it is), write its config/keys/credentials directory, and spawn
+          ffmpeg. Start="auto" so a reboot brings it back without anyone visiting a console.
+        -->
+        <ServiceInstall Id="TabloWebServiceInstall"
+                         Name="TabloWeb"
+                         DisplayName="TabloWeb"
+                         Description="Browser front end for the Tablo 4th-generation DVR. Serves http://localhost:8787."
+                         Type="ownProcess"
+                         Start="auto"
+                         ErrorControl="normal"
+                         Account="LocalSystem" />
+
+        <!--
+          Stop="both" covers install AND uninstall/upgrade — this is also what lets the in-app
+          updater work unattended: msiexec stops the running service, replaces the files, and
+          starts the new one back up, all inside one /qn install.
+        -->
+        <ServiceControl Id="TabloWebServiceControl"
+                         Name="TabloWeb"
+                         Start="install"
+                         Stop="both"
+                         Remove="uninstall"
+                         Wait="yes" />
+      </Component>
+
+      <Component Id="TabloWebWebConfig" Guid="*">
+        <File Id="TabloWebWebConfig" Source="$(var.PublishDir)\web.config" KeyPath="yes" />
+      </Component>
+
+      <Component Id="TabloWebStaticAssetsManifest" Guid="*">
+        <File Id="TabloWebStaticAssetsManifest"
+              Source="$(var.PublishDir)\TabloWeb.staticwebassets.endpoints.json" KeyPath="yes" />
+      </Component>
+    </ComponentGroup>
+
+    <ComponentGroup Id="ShortcutComponents">
+      <Component Id="TabloWebUrlFile" Directory="INSTALLFOLDER" Guid="*">
+        <File Id="TabloWebUrlFile" Source="TabloWeb.url" KeyPath="yes" />
+      </Component>
+
+      <Component Id="OpenTabloWebShortcut" Directory="AppProgramMenuFolder" Guid="*">
+        <Shortcut Id="OpenTabloWebMenuShortcut"
+                  Name="Open TabloWeb"
+                  Description="Open the TabloWeb guide in your browser"
+                  Target="[#TabloWebUrlFile]" />
+        <RemoveFolder Id="RemoveAppProgramMenuFolder" Directory="AppProgramMenuFolder" On="uninstall" />
+        <RegistryValue Root="HKCU" Key="Software\TabloWeb" Name="installed" Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+    </ComponentGroup>
+
+    <Feature Id="Main" Title="TabloWeb" Level="1">
+      <ComponentGroupRef Id="TabloWebWwwRootFiles" />
+      <ComponentGroupRef Id="ServiceComponents" />
+      <ComponentGroupRef Id="ShortcutComponents" />
+    </Feature>
+
+  </Package>
+</Wix>

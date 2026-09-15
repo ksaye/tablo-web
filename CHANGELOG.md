@@ -1,10 +1,33 @@
 # Changelog
 
+## 2026-09-15 — MSI installer, Windows Service, and an in-app update checker
+
+- **Windows installer** (`installer/Product.wxs`, WiX v5): installs TabloWeb into
+  `C:\Program Files\TabloWeb`, registers it as a Windows Service (`LocalSystem`, `Start=auto`) so
+  it survives a reboot with no console window, and drops an *Open TabloWeb* Start Menu shortcut.
+  Built from the same self-contained win-x64 publish as the plain zip; `TabloWeb.exe`'s file
+  component also carries the `ServiceInstall`/`ServiceControl` pair so a `/qn` install can stop,
+  replace and restart the running service unattended. `MajorUpgrade` means a newer MSI upgrades
+  an existing install in place rather than sitting beside it.
+- **`builder.Host.UseWindowsService()`** in `Program.cs` — a no-op everywhere except when the
+  Service Control Manager launches the exe, where it swaps in a lifetime that reports status back
+  to the SCM instead of writing to a console nobody can see.
+- **In-app update checker** (`UpdateChecker.cs`): polls `GET /repos/ksaye/tablo-web/releases/latest`
+  once a minute after startup and then every `TABLOWEB_UPDATE_CHECK_HOURS` (default 24), compares
+  the release tag against the version baked into the exe, and — only when a `.msi` asset is newer
+  — shows a banner with an *Update now* button. Clicking it downloads that MSI to `%TEMP%` and
+  launches `msiexec /qn`, which is what actually restarts the service; the endpoint therefore
+  returns before the install finishes on purpose. Off by default everywhere except the Windows
+  install (Docker updates via image pulls, a Linux checkout via `git pull` — neither wants a
+  background job phoning GitHub). See [Updates](docs/configuration.md#updates).
+- `GET /api/update` / `POST /api/update/install` — both already covered by the existing `/api/*`
+  401 gate in `Login.cs`, no changes needed there.
+
 ## 2026-09-15 — Windows release
 
 Tagged v1.0.0 and published a self-contained win-x64 build (single `TabloWeb.exe`, no .NET
 install needed) as a GitHub release, alongside the existing Docker path. ffmpeg is still required
-and not bundled — install it separately and put it on PATH, or point `TABLOWEB_FFMPEG_PATH` at it.
+and not bundled — install it separately and put it on PATH, or point `TABLOWEB_FFMPEG` at it.
 
 ## 2026-09-13 — Multi-view
 

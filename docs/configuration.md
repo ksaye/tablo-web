@@ -185,3 +185,19 @@ link shared with everything else in the house.
 
 Higher numbers mean lower quality in every one of these dials. The quality target is what usually
 drives the bitrate; `maxrate` only catches the spikes.
+
+## Updates
+
+| Variable | Default | |
+|---|---|---|
+| `TABLOWEB_UPDATE_CHECK` | on (Windows) / off (elsewhere) | Poll GitHub for a newer release |
+| `TABLOWEB_UPDATE_CHECK_HOURS` | `24` | How often to poll |
+| `TABLOWEB_UPDATE_REPO` | `ksaye/tablo-web` | `owner/repo` to check against |
+
+Only the **Windows installer** can act on this: it downloads the newer release's MSI and runs
+`msiexec /qn` when you click *Update now* in the web UI, and the MSI's own service control stops
+TabloWeb, replaces the files and starts it again. A Docker deployment updates by pulling a new
+image; a Linux checkout updates with `git pull`; neither wants a background job phoning GitHub on
+their behalf, so the check defaults off on both and the banner never appears — `available` in
+`GET /api/update` is always `false` there even with the check turned on, since there is nothing
+for it to install. See [the Windows section of the README](../README.md#quick-start-windows).

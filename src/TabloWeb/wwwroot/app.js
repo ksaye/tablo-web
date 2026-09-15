@@ -1202,6 +1202,49 @@ $('signOut').addEventListener('click', async (event) => {
   location.href = '/login';
 });
 
+// -------------------------------------------------------------------------- updates
+
+// Only the Windows install can actually apply an update (msiexec, via a Windows Service) — on
+// Docker or a Linux checkout the endpoint reports `available: false` and this stays quiet.
+async function checkForUpdate() {
+  try {
+    const { body } = await api('/api/update');
+    if (!body.available || !body.latestVersion) { $('updateBanner').hidden = true; return; }
+    if (localStorage.getItem('tabloweb.updateDismissed') === body.latestVersion) return;
+
+    $('updateBanner').dataset.version = body.latestVersion;
+    $('updateText').textContent =
+      `TabloWeb ${body.latestVersion} is available (you have ${body.currentVersion}).`;
+    $('updateBtn').disabled = false;
+    $('updateBtn').textContent = 'Update now';
+    $('updateBanner').hidden = false;
+  } catch { /* not worth interrupting anyone's TV over */ }
+}
+
+$('updateBtn').addEventListener('click', async () => {
+  $('updateBtn').disabled = true;
+  $('updateBtn').textContent = 'Installing…';
+  $('updateText').textContent =
+    'Downloading and installing the update — this page will go quiet for a minute while the ' +
+    'service restarts.';
+  try {
+    await api('/api/update/install', { method: 'POST' });
+  } catch (err) {
+    $('updateText').textContent = `Update failed: ${err.message}`;
+    $('updateBtn').disabled = false;
+    $('updateBtn').textContent = 'Update now';
+  }
+});
+
+$('updateDismiss').addEventListener('click', () => {
+  const version = $('updateBanner').dataset.version;
+  try { if (version) localStorage.setItem('tabloweb.updateDismissed', version); } catch { /* fine */ }
+  $('updateBanner').hidden = true;
+});
+
+checkForUpdate();
+setInterval(checkForUpdate, 3600000);
+
 setView(location.hash.replace('#', '') || 'live');
 pollStatus();
 setInterval(pollStatus, 15000);

@@ -90,6 +90,27 @@ docker compose -f docker-compose.yml -f docker-compose.vaapi.yml up -d
 See **[docs/docker.md](docs/docker.md)** for GPU passthrough, reverse proxies, storage and
 updating, and **[docs/encoding.md](docs/encoding.md)** for what each option actually costs.
 
+## Quick start (Windows)
+
+Grab the latest `TabloWeb-*.msi` from **[Releases](https://github.com/ksaye/tablo-web/releases)**
+and run it. It installs TabloWeb as a Windows Service (starts on boot, no console window) and
+adds an *Open TabloWeb* Start Menu shortcut pointing at <http://localhost:8787>.
+
+You still need **ffmpeg** — it is not bundled. Install it and put `ffmpeg.exe` on `PATH` before
+starting the service, or the service log ends up full of "no such program" for every play
+attempt. FAST (free streaming) channels don't need it, so the site will otherwise look normal.
+
+Once installed, the site itself will tell you about a newer release — a banner offers **Update
+now**, which downloads the new MSI and installs it in place (the service restarts on its own
+partway through). See [Updates](docs/configuration.md#updates) to change how often it checks or
+turn it off. Prefer to update by hand? Just run the newer MSI yourself; it upgrades in place the
+same way.
+
+Configuration is the same environment variables as everywhere else — set them as Windows
+[system environment variables](https://learn.microsoft.com/windows-server/administration/windows-commands/setx),
+or drop a `.env` file beside `TabloWeb.exe` in `C:\Program Files\TabloWeb`. See
+[docs/configuration.md](docs/configuration.md).
+
 ## Quick start (from source)
 
 Needs the [.NET 10 SDK](https://dotnet.microsoft.com/download) and **ffmpeg** on `PATH`.

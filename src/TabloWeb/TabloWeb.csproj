@@ -9,10 +9,19 @@
     <AssemblyName>TabloWeb</AssemblyName>
     <Platforms>AnyCPU;x64</Platforms>
     <InvariantGlobalization>true</InvariantGlobalization>
+    <!-- Bump this alongside the git tag on every release — it is what the update checker (see
+         UpdateChecker.cs) compares against the latest GitHub release, and what the installer
+         (installer/Product.wxs) stamps the MSI with. -->
+    <Version>1.1.0</Version>
   </PropertyGroup>
 
-  <!-- No package references on purpose: cookie authentication and data protection are both in
-       the shared framework, so the whole app is the SDK and nothing else. -->
+  <!-- The only package reference this project needs: cookie authentication and data protection
+       are both in the shared framework already. Windows Service hosting is a thin shim — a no-op
+       everywhere except when Windows launches the exe as a service — so it is fine to reference
+       on every platform rather than conditioning it on the target OS. -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="10.0.0" />
+  </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\TabloWeb.Core\TabloWeb.Core.csproj" />

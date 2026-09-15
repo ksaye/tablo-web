@@ -76,6 +76,14 @@ button, input, select { font: inherit; color: inherit; }
   background: #3d1d1d; border: 1px solid #6b2b2b; color: #ffc9c4; font-size: 14px;
 }
 
+.update-banner {
+  margin: 12px 16px 0; padding: 10px 14px; border-radius: var(--radius);
+  background: #16324a; border: 1px solid #2a5478; color: #bfe0ff; font-size: 14px;
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+}
+.update-banner button { margin-left: auto; }
+.update-banner #updateDismiss { margin-left: 0; }
+
 /* -------------------------------------------------------------------- views */
 
 main { padding: 16px; max-width: 1600px; margin: 0 auto; }

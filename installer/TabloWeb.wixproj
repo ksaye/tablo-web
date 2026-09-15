@@ -1,0 +1,32 @@
+<Project Sdk="WixToolset.Sdk/5.0.2">
+
+  <PropertyGroup>
+    <OutputType>Package</OutputType>
+    <Platform>x64</Platform>
+    <!-- Overridden from CI (-p:Version=1.2.3) to match the git tag being released; this default
+         only matters for a manual local build. -->
+    <Version Condition="'$(Version)' == ''">1.0.0</Version>
+    <OutputName>TabloWeb-win-x64-v$(Version)</OutputName>
+    <!-- Overridden from CI to point at the real `dotnet publish` output; this default assumes
+         you published with the exact command from README.md's Windows section, run from the
+         repo root. -->
+    <PublishDir Condition="'$(PublishDir)' == ''">$(MSBuildThisFileDirectory)..\publish\win-x64</PublishDir>
+    <DefineConstants>Version=$(Version);PublishDir=$(PublishDir)</DefineConstants>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="Product.wxs" />
+  </ItemGroup>
+
+  <!-- Everything under wwwroot in the publish output, minus the root itself (WwwRootFolder in
+       Product.wxs already represents that directory). TabloWeb.exe, web.config and the
+       static-assets manifest are authored by hand in Product.wxs instead — see the comment
+       there for why. -->
+  <ItemGroup>
+    <HarvestDirectory Include="$(PublishDir)\wwwroot"
+                       ComponentGroupName="TabloWebWwwRootFiles"
+                       DirectoryRefId="WwwRootFolder"
+                       SuppressRootDirectory="true" />
+  </ItemGroup>
+
+</Project>

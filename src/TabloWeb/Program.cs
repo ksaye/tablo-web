@@ -16,6 +16,10 @@ using TabloWeb.Services;
 LoadDotEnv();
 
 var builder = WebApplication.CreateBuilder(args);
+// A no-op everywhere except when Windows Services Control Manager launches the exe: then it
+// swaps in a lifetime that reports status back to the SCM instead of writing to a console nobody
+// can see. Safe to call unconditionally on every platform.
+builder.Host.UseWindowsService();
 builder.WebHost.UseUrls(Environment.GetEnvironmentVariable("TABLOWEB_URLS") ?? "http://0.0.0.0:8787");
 builder.Logging.AddSimpleConsole(o => { o.SingleLine = true; o.TimestampFormat = "yyyy-MM-dd HH:mm:ss "; });
 // Every open tab polls status, and each poll is four framework log lines. Keep the journal to
@@ -34,6 +38,17 @@ builder.Services.AddHostedService<Warmer>();
 builder.Services.AddHttpClient("device").ConfigurePrimaryHttpMessageHandler(
     // Snapshot images come from a raw LAN IP; a system proxy would refuse to route it.
     () => new SocketsHttpHandler { UseProxy = false, Proxy = null });
+builder.Services.AddHttpClient("github", c =>
+{
+    // The GitHub API 403s any request with no User-Agent at all.
+    c.DefaultRequestHeaders.UserAgent.ParseAdd($"TabloWeb/{UpdateChecker.CurrentVersion}");
+    c.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
+    // Generous on purpose: the same client also pulls the MSI asset itself (tens of MB) when an
+    // install is requested, not just the small release-metadata JSON.
+    c.Timeout = TimeSpan.FromMinutes(5);
+});
+builder.Services.AddSingleton<UpdateChecker>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<UpdateChecker>());
 builder.Services.Configure<ForwardedHeadersOptions>(o =>
 {
     o.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
@@ -58,6 +73,44 @@ var mosaics = app.Services.GetRequiredService<MosaicManager>();
 // Credentials from the environment or from a previous sign-in, so a restart reconnects and
 // starts warming the guide without waiting for a browser.
 tablo.Restore();
+
+// ------------------------------------------------------------------------------------ updates
+
+var updateChecker = app.Services.GetRequiredService<UpdateChecker>();
+
+app.MapGet("/api/update", () =>
+{
+    var s = updateChecker.State;
+    return Results.Ok(new
+    {
+        supported = OperatingSystem.IsWindows(),
+        enabled = UpdateChecker.Enabled,
+        currentVersion = UpdateChecker.CurrentVersion.ToString(),
+        latestVersion = s.LatestVersion?.ToString(),
+        available = s.Available,
+        assetName = s.AssetName,
+        assetSize = s.AssetSize,
+        releaseUrl = s.ReleaseUrl,
+        checkedUtc = s.CheckedUtc,
+        error = s.Error,
+        installing = s.Installing,
+        installError = s.InstallError
+    });
+});
+
+// Kicks off the download + msiexec and returns immediately — see UpdateChecker.InstallAsync for
+// why this deliberately does not wait for the install to finish (msiexec stops this very
+// service partway through, on purpose).
+app.MapPost("/api/update/install", () =>
+{
+    if (!OperatingSystem.IsWindows())
+        return Results.BadRequest(new { error = "The installer only exists for Windows; update this install the way you deployed it (git pull, or a new Docker image)." });
+    if (!updateChecker.State.Available)
+        return Results.BadRequest(new { error = "No update is available." });
+    if (!updateChecker.State.Installing)
+        _ = updateChecker.InstallAsync(CancellationToken.None);
+    return Results.Ok(new { ok = true });
+});
 
 // ------------------------------------------------------------------------------------ status
 
