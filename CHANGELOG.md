@@ -1,5 +1,27 @@
 # Changelog
 
+## 2026-09-15 — Windows measured, MSI build fixed, mosaic bug found
+
+- **v1.1.0's MSI is now real**, built and installed end to end on a real Windows machine (the
+  win11 build VM), not just compiled: install, a major-upgrade from 1.1.0→1.1.1, and uninstall
+  all verified. Along the way, fixed two installer bugs from the first attempt at this — a
+  duplicate `<Compile Include="Product.wxs">` that made WiX see two competing entry points, and
+  a `WixToolset.Sdk` MSBuild directory-harvest item (`HarvestDirectory`) that turned out not to
+  exist in 5.0.2 and silently did nothing. `installer/Product.wxs` now harvests `wwwroot` with
+  the compiler-level `<Files Include="...\wwwroot\**"/>`, which does work, and the release
+  workflow builds with the plain `wix build` CLI instead of an MSBuild project.
+- **Measured real performance on Windows** against the live Tablo, software encoding (the build
+  VM has no GPU): see [Windows](docs/encoding.md#windows) — roughly 130% of a core / 1.75 Mbps
+  for one live channel, versus the documented Linux figure of 217% of a core for the same
+  channel and encoder on the same physical CPU model. Caveated appropriately: live content varies
+  shot to shot, and the comparison wasn't under matched load.
+- **Found a real bug, not yet fixed**: FAST channels can fail to open under a newer ffmpeg — some
+  partner CDNs' ad-stitched segment URLs trip ffmpeg's `allowed_segment_extensions` HLS-demuxer
+  safety check (added after the `6.1.1` this project documents using). Reproduced with ffmpeg
+  9.0.1 against three different FAST channels; antenna channels are unaffected. Written up in
+  [docs/encoding.md](docs/encoding.md#windows) since that's where it was found — likely fix is
+  `-allowed_extensions ALL` on FAST-channel ffmpeg inputs.
+
 ## 2026-09-15 — MSI installer, Windows Service, and an in-app update checker
 
 - **Windows installer** (`installer/Product.wxs`, WiX v5): installs TabloWeb into

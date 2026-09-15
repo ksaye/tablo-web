@@ -56,6 +56,36 @@ it, and turn it back off if a marginal channel starts breaking up.
 VA-API has not been measured here, but sits in the same territory: a fixed-function encoder, a
 few percent of a core, essentially free.
 
+## Windows
+
+Measured 2026-09-15 on the Windows Service install (v1.1.0), software encoding only — the build
+VM used has no GPU, so NVENC/VA-API could not be compared on Windows.
+
+| Test | Hardware | CPU | Bitrate |
+|---|---|---|---|
+| Live, 1 channel (4.1 KDFW, 720p59.94) | Xeon Silver 4210 @ 2.2GHz, 4 vCPUs | ~130% of a core (two 15s samples: 118%, 145%) | ~1.75 Mbps |
+| Multi-view, 3 panes (4.1 KDFW + 5.1 KXAS + 8.8 WFAA, mixed 720p/1080i) | same | ~142% of a core | ~2.84 Mbps |
+
+For context, the single-channel Linux number in the table above (`libx264 veryfast`, same
+channel) is **217% of a core** — measured on the *same physical CPU model*: the Windows test ran
+as a KVM guest on `home.saye.org`, which is itself a dual-socket Xeon Silver 4210. Take the
+comparison as a data point, not a verdict — a live broadcast's content changes shot to shot and
+`crf`/`veryfast` is content-adaptive, so both CPU and bitrate genuinely drift run to run even on
+identical hardware; the Windows guest was also otherwise idle, while the Linux host was running
+its full service fleet at the time the 217% figure was recorded. Re-measure before sizing a
+Windows box around this.
+
+**FAST (free streaming) channels can fail on a newer ffmpeg.** Some partner CDNs (Amagi, at
+least) sign ad-stitched segment URLs with a trailing query string that confuses the HLS demuxer's
+`allowed_segment_extensions` safety check, added in a recent ffmpeg version — it rejects the
+segment as an unrecognized extension and the whole input fails to open (`Error binding
+filtergraph inputs/outputs: Invalid argument` if it's one pane of a multi-view). Reproduced with
+ffmpeg 9.0.1 (the current gyan.dev Windows *essentials* build) against three different FAST
+channels; antenna channels and the Tablo's own HLS are unaffected — their segment URLs are plain.
+The Linux deployment's documented `ffmpeg 6.1.1` predates this check, which is presumably why it
+hasn't shown up there. Not yet fixed in code; the likely fix is passing `-allowed_extensions ALL`
+on FAST-channel inputs. If FAST channels break after an ffmpeg upgrade, this is why.
+
 ## Sizing without a GPU
 
 Roughly two cores per concurrent 720p60 viewer at `veryfast`. If that does not fit, in the order
