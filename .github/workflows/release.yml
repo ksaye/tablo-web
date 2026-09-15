@@ -58,11 +58,14 @@ jobs:
         # directory-harvest MSBuild integration. `wix build` itself does, via the compiler-level
         # <Files> element in installer/Product.wxs (verified end to end — install, major-upgrade,
         # uninstall — on a real Windows machine, not just compiled).
+        # Must run from installer/: Product.wxs's TabloWeb.url <File Source> is a plain relative
+        # filename, resolved against the current directory, not the .wxs file's own directory.
+        working-directory: installer
         run: >
-          wix build installer/Product.wxs -arch x64
+          wix build Product.wxs -arch x64
           -d Version=${{ steps.version.outputs.version }}
           -d PublishDir=${{ github.workspace }}\publish\win-x64
-          -o TabloWeb-win-x64-${{ steps.version.outputs.tag }}.msi
+          -o ..\TabloWeb-win-x64-${{ steps.version.outputs.tag }}.msi
 
       - name: Attach assets to the GitHub release
         uses: softprops/action-gh-release@v2
