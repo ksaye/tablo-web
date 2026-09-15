@@ -18,15 +18,10 @@
        in the project directory by default, and adding it again compiled the file twice — WiX
        treats that as two competing entry points ("Multiple entry sections") and fails the link. -->
 
-  <!-- Everything under wwwroot in the publish output, minus the root itself (WwwRootFolder in
-       Product.wxs already represents that directory). TabloWeb.exe, web.config and the
-       static-assets manifest are authored by hand in Product.wxs instead — see the comment
-       there for why. -->
-  <ItemGroup>
-    <HarvestDirectory Include="$(PublishDir)\wwwroot"
-                       ComponentGroupName="TabloWebWwwRootFiles"
-                       DirectoryRefId="WwwRootFolder"
-                       SuppressRootDirectory="true" />
-  </ItemGroup>
+  <!-- No directory-harvest item here either: WixToolset.Sdk 5.0.2 does not actually implement one
+       (an earlier `<HarvestDirectory>` item here was a no-op — the SDK's targets file has no such
+       item type, and MSBuild silently ignores unknown items rather than erroring). Every file
+       under wwwroot is listed by hand in Product.wxs instead; see the comment at the top of that
+       file. -->
 
 </Project>

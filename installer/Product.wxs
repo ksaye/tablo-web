@@ -6,13 +6,14 @@
   Windows Service that starts automatically, and drops a Start Menu shortcut that opens the site
   in a browser.
 
-  Most of wwwroot is harvested from $(var.PublishDir) at build time (see TabloWeb.wixproj) — that
-  is the output of a self-contained win-x64 single-file publish (see README.md's Windows
-  section for the exact command), so there is exactly one thing to keep in sync: publish before
-  building this project. TabloWeb.exe
-  itself, web.config and the static-assets manifest are authored explicitly below instead of
-  harvested, because the exe has to live in the same component as its ServiceInstall — a file
-  can only belong to one component, so it cannot also come from the harvested group.
+  Every file below is listed by hand rather than harvested from $(var.PublishDir) at build time —
+  WixToolset.Sdk 5.0.2 turns out not to have a working directory-harvest MSBuild integration (an
+  earlier attempt at one silently produced nothing and failed to link). wwwroot only has two
+  folders and a dozen files, so hand-authoring is small and — unlike a from-scratch harvester
+  script with no Windows machine available to test it on — verifiable by just reading it.
+  **If a file is added under wwwroot/, add its <Component> here too, or the installer won't ship
+  it.** The publish output is a self-contained win-x64 single-file publish (see README.md's
+  Windows section for the exact command); publish before building this project.
 
   UpgradeCode is permanent — generated once for this product and never to change. Every future
   release keeps it so a newer MSI upgrades the existing install (MajorUpgrade below) rather than
@@ -43,7 +44,9 @@
 
     <StandardDirectory Id="ProgramFiles64Folder">
       <Directory Id="INSTALLFOLDER" Name="TabloWeb">
-        <Directory Id="WwwRootFolder" Name="wwwroot" />
+        <Directory Id="WwwRootFolder" Name="wwwroot">
+          <Directory Id="VendorFolder" Name="vendor" />
+        </Directory>
       </Directory>
     </StandardDirectory>
 
@@ -92,6 +95,50 @@
       </Component>
     </ComponentGroup>
 
+    <!-- The plain files at the root of wwwroot, plus the pre-compressed .br/.gz siblings that
+         UseStaticFiles serves when the browser sends the matching Accept-Encoding. -->
+    <ComponentGroup Id="WwwRootComponents" Directory="WwwRootFolder">
+      <Component Id="WwwRootIndexHtml" Guid="*">
+        <File Id="WwwRootIndexHtml" Source="$(var.PublishDir)\wwwroot\index.html" KeyPath="yes" />
+      </Component>
+      <Component Id="WwwRootIndexHtmlBr" Guid="*">
+        <File Id="WwwRootIndexHtmlBr" Source="$(var.PublishDir)\wwwroot\index.html.br" KeyPath="yes" />
+      </Component>
+      <Component Id="WwwRootIndexHtmlGz" Guid="*">
+        <File Id="WwwRootIndexHtmlGz" Source="$(var.PublishDir)\wwwroot\index.html.gz" KeyPath="yes" />
+      </Component>
+      <Component Id="WwwRootAppJs" Guid="*">
+        <File Id="WwwRootAppJs" Source="$(var.PublishDir)\wwwroot\app.js" KeyPath="yes" />
+      </Component>
+      <Component Id="WwwRootAppJsBr" Guid="*">
+        <File Id="WwwRootAppJsBr" Source="$(var.PublishDir)\wwwroot\app.js.br" KeyPath="yes" />
+      </Component>
+      <Component Id="WwwRootAppJsGz" Guid="*">
+        <File Id="WwwRootAppJsGz" Source="$(var.PublishDir)\wwwroot\app.js.gz" KeyPath="yes" />
+      </Component>
+      <Component Id="WwwRootStyleCss" Guid="*">
+        <File Id="WwwRootStyleCss" Source="$(var.PublishDir)\wwwroot\style.css" KeyPath="yes" />
+      </Component>
+      <Component Id="WwwRootStyleCssBr" Guid="*">
+        <File Id="WwwRootStyleCssBr" Source="$(var.PublishDir)\wwwroot\style.css.br" KeyPath="yes" />
+      </Component>
+      <Component Id="WwwRootStyleCssGz" Guid="*">
+        <File Id="WwwRootStyleCssGz" Source="$(var.PublishDir)\wwwroot\style.css.gz" KeyPath="yes" />
+      </Component>
+    </ComponentGroup>
+
+    <ComponentGroup Id="VendorComponents" Directory="VendorFolder">
+      <Component Id="VendorHlsJs" Guid="*">
+        <File Id="VendorHlsJs" Source="$(var.PublishDir)\wwwroot\vendor\hls.min.js" KeyPath="yes" />
+      </Component>
+      <Component Id="VendorHlsJsBr" Guid="*">
+        <File Id="VendorHlsJsBr" Source="$(var.PublishDir)\wwwroot\vendor\hls.min.js.br" KeyPath="yes" />
+      </Component>
+      <Component Id="VendorHlsJsGz" Guid="*">
+        <File Id="VendorHlsJsGz" Source="$(var.PublishDir)\wwwroot\vendor\hls.min.js.gz" KeyPath="yes" />
+      </Component>
+    </ComponentGroup>
+
     <ComponentGroup Id="ShortcutComponents">
       <Component Id="TabloWebUrlFile" Directory="INSTALLFOLDER" Guid="*">
         <File Id="TabloWebUrlFile" Source="TabloWeb.url" KeyPath="yes" />
@@ -108,8 +155,9 @@
     </ComponentGroup>
 
     <Feature Id="Main" Title="TabloWeb" Level="1">
-      <ComponentGroupRef Id="TabloWebWwwRootFiles" />
       <ComponentGroupRef Id="ServiceComponents" />
+      <ComponentGroupRef Id="WwwRootComponents" />
+      <ComponentGroupRef Id="VendorComponents" />
       <ComponentGroupRef Id="ShortcutComponents" />
     </Feature>
 
