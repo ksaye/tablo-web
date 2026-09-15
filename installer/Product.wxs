@@ -6,14 +6,19 @@
   Windows Service that starts automatically, and drops a Start Menu shortcut that opens the site
   in a browser.
 
-  Every file below is listed by hand rather than harvested from $(var.PublishDir) at build time —
-  WixToolset.Sdk 5.0.2 turns out not to have a working directory-harvest MSBuild integration (an
-  earlier attempt at one silently produced nothing and failed to link). wwwroot only has two
-  folders and a dozen files, so hand-authoring is small and — unlike a from-scratch harvester
-  script with no Windows machine available to test it on — verifiable by just reading it.
-  **If a file is added under wwwroot/, add its <Component> here too, or the installer won't ship
-  it.** The publish output is a self-contained win-x64 single-file publish (see README.md's
-  Windows section for the exact command); publish before building this project.
+  Build with the plain WiX CLI, not an MSBuild project — WixToolset.Sdk 5.0.2 turned out not to
+  have a working directory-harvest MSBuild integration, and this repo already had a working
+  pattern for that (see ~/ourtablo/installer/OurTablo.wxs on the win11 build VM, sshtest@
+  192.168.15.189): `wix build` itself supports harvesting via the compiler-level <Files> element,
+  no MSBuild SDK involved.
+
+    dotnet publish ..\src\TabloWeb\TabloWeb.csproj -c Release -r win-x64 -p:SelfContained=true ^
+        -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o publish
+    wix build Product.wxs -arch x64 -d Version=1.1.0 -d PublishDir=publish -o TabloWeb-1.1.0.msi
+
+  Everything under $(var.PublishDir) is harvested EXCEPT TabloWeb.exe, which gets its own
+  Component below instead — it has to carry the ServiceInstall/ServiceControl pair, and a file can
+  only belong to one component, so it cannot also come from the harvested group.
 
   UpgradeCode is permanent — generated once for this product and never to change. Every future
   release keeps it so a newer MSI upgrades the existing install (MajorUpgrade below) rather than
@@ -26,7 +31,6 @@
            Version="$(var.Version)"
            UpgradeCode="bae3d4e2-abf9-4505-a9ad-9d4dabf495a7"
            Compressed="yes"
-           InstallerVersion="500"
            Scope="perMachine">
 
     <SummaryInformation
@@ -42,11 +46,13 @@
     <MajorUpgrade DowngradeErrorMessage="A newer version of TabloWeb is already installed." />
     <MediaTemplate EmbedCab="yes" />
 
+    <Icon Id="AppIcon" SourceFile="$(var.PublishDir)\TabloWeb.exe" />
+    <Property Id="ARPPRODUCTICON" Value="AppIcon" />
+    <Property Id="ARPHELPLINK" Value="https://github.com/ksaye/tablo-web" />
+
     <StandardDirectory Id="ProgramFiles64Folder">
       <Directory Id="INSTALLFOLDER" Name="TabloWeb">
-        <Directory Id="WwwRootFolder" Name="wwwroot">
-          <Directory Id="VendorFolder" Name="vendor" />
-        </Directory>
+        <Directory Id="WwwRootFolder" Name="wwwroot" />
       </Directory>
     </StandardDirectory>
 
@@ -54,111 +60,73 @@
       <Directory Id="AppProgramMenuFolder" Name="TabloWeb" />
     </StandardDirectory>
 
-    <ComponentGroup Id="ServiceComponents" Directory="INSTALLFOLDER">
-      <Component Id="TabloWebService" Guid="*">
-        <File Id="TabloWebServiceExe" Source="$(var.PublishDir)\TabloWeb.exe" KeyPath="yes" />
-
-        <!--
-          LocalSystem, not a lesser account: the app needs to reach arbitrary LAN addresses (the
-          Tablo itself, wherever it is), write its config/keys/credentials directory, and spawn
-          ffmpeg. Start="auto" so a reboot brings it back without anyone visiting a console.
-        -->
-        <ServiceInstall Id="TabloWebServiceInstall"
-                         Name="TabloWeb"
-                         DisplayName="TabloWeb"
-                         Description="Browser front end for the Tablo 4th-generation DVR. Serves http://localhost:8787."
-                         Type="ownProcess"
-                         Start="auto"
-                         ErrorControl="normal"
-                         Account="LocalSystem" />
-
-        <!--
-          Stop="both" covers install AND uninstall/upgrade — this is also what lets the in-app
-          updater work unattended: msiexec stops the running service, replaces the files, and
-          starts the new one back up, all inside one /qn install.
-        -->
-        <ServiceControl Id="TabloWebServiceControl"
-                         Name="TabloWeb"
-                         Start="install"
-                         Stop="both"
-                         Remove="uninstall"
-                         Wait="yes" />
-      </Component>
-
-      <Component Id="TabloWebWebConfig" Guid="*">
-        <File Id="TabloWebWebConfig" Source="$(var.PublishDir)\web.config" KeyPath="yes" />
-      </Component>
-
-      <Component Id="TabloWebStaticAssetsManifest" Guid="*">
-        <File Id="TabloWebStaticAssetsManifest"
-              Source="$(var.PublishDir)\TabloWeb.staticwebassets.endpoints.json" KeyPath="yes" />
-      </Component>
+    <!-- <Files> has no Exclude attribute in this WiX version, so TabloWeb.exe (which needs its
+         own Component below, paired with ServiceInstall) simply is not part of the harvested
+         subtree: scoping the harvest to wwwroot\ keeps the two from ever colliding, rather than
+         trying to subtract the exe back out of a whole-publish-dir harvest. -->
+    <ComponentGroup Id="WwwRootFiles" Directory="WwwRootFolder">
+      <Files Include="$(var.PublishDir)\wwwroot\**" />
     </ComponentGroup>
 
-    <!-- The plain files at the root of wwwroot, plus the pre-compressed .br/.gz siblings that
-         UseStaticFiles serves when the browser sends the matching Accept-Encoding. -->
-    <ComponentGroup Id="WwwRootComponents" Directory="WwwRootFolder">
-      <Component Id="WwwRootIndexHtml" Guid="*">
-        <File Id="WwwRootIndexHtml" Source="$(var.PublishDir)\wwwroot\index.html" KeyPath="yes" />
-      </Component>
-      <Component Id="WwwRootIndexHtmlBr" Guid="*">
-        <File Id="WwwRootIndexHtmlBr" Source="$(var.PublishDir)\wwwroot\index.html.br" KeyPath="yes" />
-      </Component>
-      <Component Id="WwwRootIndexHtmlGz" Guid="*">
-        <File Id="WwwRootIndexHtmlGz" Source="$(var.PublishDir)\wwwroot\index.html.gz" KeyPath="yes" />
-      </Component>
-      <Component Id="WwwRootAppJs" Guid="*">
-        <File Id="WwwRootAppJs" Source="$(var.PublishDir)\wwwroot\app.js" KeyPath="yes" />
-      </Component>
-      <Component Id="WwwRootAppJsBr" Guid="*">
-        <File Id="WwwRootAppJsBr" Source="$(var.PublishDir)\wwwroot\app.js.br" KeyPath="yes" />
-      </Component>
-      <Component Id="WwwRootAppJsGz" Guid="*">
-        <File Id="WwwRootAppJsGz" Source="$(var.PublishDir)\wwwroot\app.js.gz" KeyPath="yes" />
-      </Component>
-      <Component Id="WwwRootStyleCss" Guid="*">
-        <File Id="WwwRootStyleCss" Source="$(var.PublishDir)\wwwroot\style.css" KeyPath="yes" />
-      </Component>
-      <Component Id="WwwRootStyleCssBr" Guid="*">
-        <File Id="WwwRootStyleCssBr" Source="$(var.PublishDir)\wwwroot\style.css.br" KeyPath="yes" />
-      </Component>
-      <Component Id="WwwRootStyleCssGz" Guid="*">
-        <File Id="WwwRootStyleCssGz" Source="$(var.PublishDir)\wwwroot\style.css.gz" KeyPath="yes" />
-      </Component>
-    </ComponentGroup>
+    <Component Id="TabloWebWebConfig" Directory="INSTALLFOLDER" Guid="*">
+      <File Id="TabloWebWebConfig" Source="$(var.PublishDir)\web.config" KeyPath="yes" />
+    </Component>
 
-    <ComponentGroup Id="VendorComponents" Directory="VendorFolder">
-      <Component Id="VendorHlsJs" Guid="*">
-        <File Id="VendorHlsJs" Source="$(var.PublishDir)\wwwroot\vendor\hls.min.js" KeyPath="yes" />
-      </Component>
-      <Component Id="VendorHlsJsBr" Guid="*">
-        <File Id="VendorHlsJsBr" Source="$(var.PublishDir)\wwwroot\vendor\hls.min.js.br" KeyPath="yes" />
-      </Component>
-      <Component Id="VendorHlsJsGz" Guid="*">
-        <File Id="VendorHlsJsGz" Source="$(var.PublishDir)\wwwroot\vendor\hls.min.js.gz" KeyPath="yes" />
-      </Component>
-    </ComponentGroup>
+    <Component Id="TabloWebStaticAssetsManifest" Directory="INSTALLFOLDER" Guid="*">
+      <File Id="TabloWebStaticAssetsManifest"
+            Source="$(var.PublishDir)\TabloWeb.staticwebassets.endpoints.json" KeyPath="yes" />
+    </Component>
 
-    <ComponentGroup Id="ShortcutComponents">
-      <Component Id="TabloWebUrlFile" Directory="INSTALLFOLDER" Guid="*">
-        <File Id="TabloWebUrlFile" Source="TabloWeb.url" KeyPath="yes" />
-      </Component>
+    <Component Id="TabloWebService" Directory="INSTALLFOLDER" Guid="*">
+      <File Id="TabloWebServiceExe" Source="$(var.PublishDir)\TabloWeb.exe" KeyPath="yes" />
 
-      <Component Id="OpenTabloWebShortcut" Directory="AppProgramMenuFolder" Guid="*">
-        <Shortcut Id="OpenTabloWebMenuShortcut"
-                  Name="Open TabloWeb"
-                  Description="Open the TabloWeb guide in your browser"
-                  Target="[#TabloWebUrlFile]" />
-        <RemoveFolder Id="RemoveAppProgramMenuFolder" Directory="AppProgramMenuFolder" On="uninstall" />
-        <RegistryValue Root="HKCU" Key="Software\TabloWeb" Name="installed" Type="integer" Value="1" KeyPath="yes" />
-      </Component>
-    </ComponentGroup>
+      <!--
+        LocalSystem, not a lesser account: the app needs to reach arbitrary LAN addresses (the
+        Tablo itself, wherever it is), write its config/keys/credentials directory, and spawn
+        ffmpeg. Start="auto" so a reboot brings it back without anyone visiting a console.
+      -->
+      <ServiceInstall Id="TabloWebServiceInstall"
+                       Name="TabloWeb"
+                       DisplayName="TabloWeb"
+                       Description="Browser front end for the Tablo 4th-generation DVR. Serves http://localhost:8787."
+                       Type="ownProcess"
+                       Start="auto"
+                       ErrorControl="normal"
+                       Account="LocalSystem" />
+
+      <!--
+        Stop="both" covers install AND uninstall/upgrade — this is also what lets the in-app
+        updater work unattended: msiexec stops the running service, replaces the files, and
+        starts the new one back up, all inside one /qn install.
+      -->
+      <ServiceControl Id="TabloWebServiceControl"
+                       Name="TabloWeb"
+                       Start="install"
+                       Stop="both"
+                       Remove="uninstall"
+                       Wait="yes" />
+    </Component>
+
+    <Component Id="TabloWebUrlFile" Directory="INSTALLFOLDER" Guid="*">
+      <File Id="TabloWebUrlFile" Source="TabloWeb.url" KeyPath="yes" />
+    </Component>
+
+    <Component Id="OpenTabloWebShortcut" Directory="AppProgramMenuFolder" Guid="*">
+      <Shortcut Id="OpenTabloWebMenuShortcut"
+                Name="Open TabloWeb"
+                Description="Open the TabloWeb guide in your browser"
+                Target="[#TabloWebUrlFile]" />
+      <RemoveFolder Id="RemoveAppProgramMenuFolder" Directory="AppProgramMenuFolder" On="uninstall" />
+      <RegistryValue Root="HKCU" Key="Software\TabloWeb" Name="installed" Type="integer" Value="1" KeyPath="yes" />
+    </Component>
 
     <Feature Id="Main" Title="TabloWeb" Level="1">
-      <ComponentGroupRef Id="ServiceComponents" />
-      <ComponentGroupRef Id="WwwRootComponents" />
-      <ComponentGroupRef Id="VendorComponents" />
-      <ComponentGroupRef Id="ShortcutComponents" />
+      <ComponentGroupRef Id="WwwRootFiles" />
+      <ComponentRef Id="TabloWebWebConfig" />
+      <ComponentRef Id="TabloWebStaticAssetsManifest" />
+      <ComponentRef Id="TabloWebService" />
+      <ComponentRef Id="TabloWebUrlFile" />
+      <ComponentRef Id="OpenTabloWebShortcut" />
     </Feature>
 
   </Package>

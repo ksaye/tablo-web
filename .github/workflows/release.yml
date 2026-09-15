@@ -50,17 +50,19 @@ jobs:
           Compress-Archive -Path publish/win-x64/* `
             -DestinationPath "TabloWeb-win-x64-${{ steps.version.outputs.tag }}.zip"
 
-      - name: Install WiX and the extension the installer uses
-        run: |
-          dotnet tool install --global wix --version 5.0.2
-          wix extension add -g WixToolset.Util.wixext/5.0.2
+      - name: Install WiX
+        run: dotnet tool install --global wix --version 5.0.2
 
       - name: Build the MSI
+        # Plain CLI, not an MSBuild project — WixToolset.Sdk 5.0.2 has no working
+        # directory-harvest MSBuild integration. `wix build` itself does, via the compiler-level
+        # <Files> element in installer/Product.wxs (verified end to end — install, major-upgrade,
+        # uninstall — on a real Windows machine, not just compiled).
         run: >
-          dotnet build installer/TabloWeb.wixproj -c Release
-          -p:Version=${{ steps.version.outputs.version }}
-          -p:PublishDir=${{ github.workspace }}\publish\win-x64
-          -o installer\bin
+          wix build installer/Product.wxs -arch x64
+          -d Version=${{ steps.version.outputs.version }}
+          -d PublishDir=${{ github.workspace }}\publish\win-x64
+          -o TabloWeb-win-x64-${{ steps.version.outputs.tag }}.msi
 
       - name: Attach assets to the GitHub release
         uses: softprops/action-gh-release@v2
@@ -68,4 +70,4 @@ jobs:
           tag_name: ${{ steps.version.outputs.tag }}
           files: |
             TabloWeb-win-x64-${{ steps.version.outputs.tag }}.zip
-            installer/bin/*.msi
+            TabloWeb-win-x64-${{ steps.version.outputs.tag }}.msi
