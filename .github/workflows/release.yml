@@ -1,0 +1,71 @@
+name: Windows release assets
+
+# WiX only builds real MSIs on Windows (its own tooling says so — "The WiX Toolset only supports
+# Windows", and it turns out to mean it: path handling breaks outright on Linux). So this runs on
+# windows-latest, not the Linux runners the rest of this org's CI (if any) would default to.
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to (re)build and attach assets to, e.g. v1.1.0"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - name: Determine version
+        id: version
+        shell: bash
+        run: |
+          tag="${{ github.event.inputs.tag || github.ref_name }}"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Publish self-contained win-x64
+        run: >
+          dotnet publish src/TabloWeb/TabloWeb.csproj -c Release -r win-x64 --self-contained true
+          -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true
+          -p:Version=${{ steps.version.outputs.version }}
+          -o publish/win-x64
+
+      - name: Zip the plain exe (no installer needed)
+        shell: pwsh
+        run: |
+          Remove-Item publish/win-x64/*.pdb -ErrorAction SilentlyContinue
+          Compress-Archive -Path publish/win-x64/* `
+            -DestinationPath "TabloWeb-win-x64-${{ steps.version.outputs.tag }}.zip"
+
+      - name: Install WiX and the extension the installer uses
+        run: |
+          dotnet tool install --global wix --version 5.0.2
+          wix extension add -g WixToolset.Util.wixext/5.0.2
+
+      - name: Build the MSI
+        run: >
+          dotnet build installer/TabloWeb.wixproj -c Release
+          -p:Version=${{ steps.version.outputs.version }}
+          -p:PublishDir=${{ github.workspace }}\publish\win-x64
+          -o installer\bin
+
+      - name: Attach assets to the GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          files: |
+            TabloWeb-win-x64-${{ steps.version.outputs.tag }}.zip
+            installer/bin/*.msi
