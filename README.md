@@ -96,9 +96,17 @@ Grab the latest `TabloWeb-*.msi` from **[Releases](https://github.com/ksaye/tabl
 and run it. It installs TabloWeb as a Windows Service (starts on boot, no console window) and
 adds an *Open TabloWeb* Start Menu shortcut pointing at <http://localhost:8787>.
 
-You still need **ffmpeg** — it is not bundled. Install it and put `ffmpeg.exe` on `PATH` before
-starting the service, or the service log ends up full of "no such program" for every play
-attempt. FAST (free streaming) channels don't need it, so the site will otherwise look normal.
+You still need **ffmpeg** — it is not bundled. Easiest is winget, from an elevated prompt:
+
+```powershell
+winget install --id Gyan.FFmpeg -e
+```
+
+Then open a **new** terminal (PATH only updates in shells started after the install) and confirm
+with `ffmpeg -version`. Restart the TabloWeb service afterwards (`Restart-Service TabloWeb`) if it
+was already running — it only looks for `ffmpeg.exe` on `PATH` at startup. No ffmpeg on `PATH`
+means the service log fills up with "no such program" for every play attempt. FAST (free
+streaming) channels don't need it, so the site will otherwise look normal.
 
 Once installed, the site itself will tell you about a newer release — a banner offers **Update
 now**, which downloads the new MSI and installs it in place (the service restarts on its own
