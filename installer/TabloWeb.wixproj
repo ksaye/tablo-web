@@ -14,9 +14,9 @@
     <DefineConstants>Version=$(Version);PublishDir=$(PublishDir)</DefineConstants>
   </PropertyGroup>
 
-  <ItemGroup>
-    <Compile Include="Product.wxs" />
-  </ItemGroup>
+  <!-- No explicit <Compile Include="Product.wxs" /> here: the WiX SDK already globs every .wxs
+       in the project directory by default, and adding it again compiled the file twice — WiX
+       treats that as two competing entry points ("Multiple entry sections") and fails the link. -->
 
   <!-- Everything under wwwroot in the publish output, minus the root itself (WwwRootFolder in
        Product.wxs already represents that directory). TabloWeb.exe, web.config and the
