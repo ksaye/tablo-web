@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-09-15 — Windows release
+
+Tagged v1.0.0 and published a self-contained win-x64 build (single `TabloWeb.exe`, no .NET
+install needed) as a GitHub release, alongside the existing Docker path. ffmpeg is still required
+and not bundled — install it separately and put it on PATH, or point `TABLOWEB_FFMPEG_PATH` at it.
+
 ## 2026-09-13 — Multi-view
 
 Watch 2–4 live channels at once, tiled into a single picture.
