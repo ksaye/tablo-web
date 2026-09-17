@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-09-17 — Network discovery, and Windows Firewall rules in the MSI
+
+- **Network discovery** (`Discovery.cs`): the server answers a `TABLOWEB_DISCOVER` UDP broadcast on
+  port 8788 with its site port, version, the Tablo it is connected to, and `multiview` as a
+  feature. The [Tablo for Fire TV](https://github.com/ksaye/tablo-firetv) app uses it to find a
+  server and offer multi-view. Anything that is not a discovery query is ignored. Off with
+  `TABLOWEB_DISCOVERY=0`; port with `TABLOWEB_DISCOVERY_PORT`. Docker needs host networking for it.
+- **The MSI now adds Windows Firewall rules** for TCP 8787 and UDP 8788, scoped to the local
+  subnet on all profiles, and removes them on uninstall. Before this a Windows install was
+  reachable only from the machine itself: a service gets no firewall prompt. The release workflow
+  adds `WixToolset.Firewall.wixext`.
+- Verified: a broadcast query from another machine is answered and junk is ignored (Linux), and on
+  Windows 11 the MSI installs the service and both rules, the site answers from the LAN, discovery
+  answers a broadcast, and uninstall removes the rules.
+
 ## 2026-09-15 — Windows measured, MSI build fixed, mosaic bug found
 
 - **v1.1.0's MSI is now real**, built and installed end to end on a real Windows machine (the

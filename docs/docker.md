@@ -25,7 +25,19 @@ Do not put the stream directory on tmpfs unless you have RAM to spare: a two-hou
 
 The default is a normal bridge network with port 8787 published. The DVR is found through Tablo's
 cloud API, which hands back its address on your network, so outbound NAT is all the container
-needs — there is no discovery protocol to worry about and no reason to reach for `host` mode.
+needs — no discovery protocol is involved in finding the DVR.
+
+The one thing a bridge network cannot carry is **network discovery** (UDP broadcasts on port 8788),
+which is how apps like [Tablo for Fire TV](https://github.com/ksaye/tablo-firetv) find the server to
+offer multi-view. If you want that, run the container with host networking instead of publishing
+ports:
+
+```yaml
+services:
+  tabloweb:
+    network_mode: host
+    # and remove the `ports:` section
+```
 
 ## NVIDIA
 

@@ -108,6 +108,10 @@ was already running — it only looks for `ffmpeg.exe` on `PATH` at startup. No 
 means the service log fills up with "no such program" for every play attempt. FAST (free
 streaming) channels don't need it, so the site will otherwise look normal.
 
+The installer adds Windows Firewall rules so other devices on your network can reach the site
+(TCP 8787) and find it (UDP 8788, network discovery) — limited to your local subnet, and removed
+again on uninstall.
+
 Once installed, the site itself will tell you about a newer release — a banner offers **Update
 now**, which downloads the new MSI and installs it in place (the service restarts on its own
 partway through). See [Updates](docs/configuration.md#updates) to change how often it checks or

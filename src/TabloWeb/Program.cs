@@ -35,6 +35,7 @@ builder.Services.AddSingleton<TabloSession>();
 builder.Services.AddSingleton<StreamManager>();
 builder.Services.AddSingleton<MosaicManager>();
 builder.Services.AddHostedService<Warmer>();
+builder.Services.AddHostedService<Discovery>();
 builder.Services.AddHttpClient("device").ConfigurePrimaryHttpMessageHandler(
     // Snapshot images come from a raw LAN IP; a system proxy would refuse to route it.
     () => new SocketsHttpHandler { UseProxy = false, Proxy = null });

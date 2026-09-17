@@ -36,6 +36,8 @@ is the `serverId` shown in the sign-in chooser, and in the log line at startup.
 | `TABLOWEB_NO_LOGIN` | off | Run with no sign-in at all |
 | `TABLOWEB_SAVE_CREDENTIALS` | on | Allow credentials to be written to disk |
 | `TABLOWEB_GUIDE_HOUR` | `3` | Local hour of the daily guide reload |
+| `TABLOWEB_DISCOVERY` | on | Answer network discovery (set `0` to turn off) |
+| `TABLOWEB_DISCOVERY_PORT` | `8788` | UDP port for network discovery |
 
 **`TABLOWEB_GUIDE_HOUR` is when the DVR gets its one hard job of the day.** A full guide load
 is hundreds of batch calls, and the box refuses connections outright while it is under that load
@@ -60,6 +62,14 @@ behind a proxy, where the app sees http even though the browser used https.
 artwork, the video segments — becomes public to anything that can reach the port. It is a
 reasonable setting for a machine on a home network that is not reachable from outside, and a bad
 one for anything else. The app logs a warning at startup when it is on.
+
+**Network discovery lets apps on your network find the server by themselves.** An app broadcasts
+`TABLOWEB_DISCOVER` to UDP 8788 and the server answers it with a small JSON note: the site's port,
+its version, which Tablo it is connected to, and that it can do multi-view. The
+[Tablo for Fire TV](https://github.com/ksaye/tablo-firetv) app uses this to offer multi-view — it
+signs in to the server with the same Tablo account it already has. The answer holds nothing that
+the sign-in page does not already show, and broadcasts do not cross routers, so this is local to
+your network. In Docker it needs host networking (see [Docker](docker.md#networking)).
 
 ## Playback
 

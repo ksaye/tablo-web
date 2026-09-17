@@ -14,7 +14,8 @@
 
     dotnet publish ..\src\TabloWeb\TabloWeb.csproj -c Release -r win-x64 -p:SelfContained=true ^
         -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o publish
-    wix build Product.wxs -arch x64 -d Version=1.1.0 -d PublishDir=publish -o TabloWeb-1.1.0.msi
+    wix extension add -g WixToolset.Firewall.wixext/5.0.2
+    wix build Product.wxs -arch x64 -ext WixToolset.Firewall.wixext -d Version=1.1.0 -d PublishDir=publish -o TabloWeb-1.1.0.msi
 
   Everything under $(var.PublishDir) is harvested EXCEPT TabloWeb.exe, which gets its own
   Component below instead — it has to carry the ServiceInstall/ServiceControl pair, and a file can
@@ -25,7 +26,8 @@
   sitting beside it as a second, conflicting product. See UpdateChecker.cs for the piece that
   downloads a future version of this MSI and launches it.
 -->
-<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:fw="http://wixtoolset.org/schemas/v4/wxs/firewall">
   <Package Name="TabloWeb"
            Manufacturer="Kevin Saye"
            Version="$(var.Version)"
@@ -93,6 +95,18 @@
                        Start="auto"
                        ErrorControl="normal"
                        Account="LocalSystem" />
+
+      <!--
+        Windows Firewall: a service gets no "allow access?" prompt, so without these rules nothing
+        else on the network (a phone, a TV, the Fire TV app) could reach the site at all. Scoped to
+        the local subnet on every profile - home networks are often classed "Public" - so the site
+        is reachable from the house but not from beyond the router. UDP is network discovery
+        (Discovery.cs). Removed again on uninstall.
+      -->
+      <fw:FirewallException Id="TabloWebHttp" Name="TabloWeb (web)" Protocol="tcp" Port="8787"
+                            Scope="localSubnet" Profile="all" />
+      <fw:FirewallException Id="TabloWebDiscovery" Name="TabloWeb (network discovery)" Protocol="udp" Port="8788"
+                            Scope="localSubnet" Profile="all" />
 
       <!--
         Stop="both" covers install AND uninstall/upgrade — this is also what lets the in-app

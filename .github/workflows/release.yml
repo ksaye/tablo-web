@@ -51,7 +51,9 @@ jobs:
             -DestinationPath "TabloWeb-win-x64-${{ steps.version.outputs.tag }}.zip"
 
       - name: Install WiX
-        run: dotnet tool install --global wix --version 5.0.2
+        run: |
+          dotnet tool install --global wix --version 5.0.2
+          wix extension add -g WixToolset.Firewall.wixext/5.0.2
 
       - name: Build the MSI
         # Plain CLI, not an MSBuild project — WixToolset.Sdk 5.0.2 has no working
@@ -62,7 +64,7 @@ jobs:
         # filename, resolved against the current directory, not the .wxs file's own directory.
         working-directory: installer
         run: >
-          wix build Product.wxs -arch x64
+          wix build Product.wxs -arch x64 -ext WixToolset.Firewall.wixext
           -d Version=${{ steps.version.outputs.version }}
           -d PublishDir=${{ github.workspace }}\publish\win-x64
           -o ..\TabloWeb-win-x64-${{ steps.version.outputs.tag }}.msi
