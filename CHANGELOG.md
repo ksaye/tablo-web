@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-09-17 — A log file on Windows
+
+- **The Windows service now writes a log** (`FileLog.cs`) to `logs\tabloweb-<date>.log` beside the
+  program, one file a day and the last seven kept, removed on uninstall. A Windows service's
+  console goes nowhere, so until now a Windows install had no way to find out why a multi-view had
+  stopped or a stream had failed — the first real multi-view failure on a Fire TV had to be chased
+  by running the service by hand in a console. Off with `TABLOWEB_LOG=0`; elsewhere with
+  `TABLOWEB_LOG_DIR`. Linux and Docker are unchanged (journald and `docker logs` already keep it).
+
 ## 2026-09-17 — Network discovery, and Windows Firewall rules in the MSI
 
 - **Network discovery** (`Discovery.cs`): the server answers a `TABLOWEB_DISCOVER` UDP broadcast on

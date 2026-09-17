@@ -22,6 +22,8 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Host.UseWindowsService();
 builder.WebHost.UseUrls(Environment.GetEnvironmentVariable("TABLOWEB_URLS") ?? "http://0.0.0.0:8787");
 builder.Logging.AddSimpleConsole(o => { o.SingleLine = true; o.TimestampFormat = "yyyy-MM-dd HH:mm:ss "; });
+// A Windows service's console goes nowhere, so keep the same log in a file there as well.
+FileLogProvider.AddTo(builder.Logging);
 // Every open tab polls status, and each poll is four framework log lines. Keep the journal to
 // our own messages and anything that actually went wrong.
 builder.Logging.AddFilter("Microsoft", LogLevel.Warning);

@@ -38,6 +38,15 @@ is the `serverId` shown in the sign-in chooser, and in the log line at startup.
 | `TABLOWEB_GUIDE_HOUR` | `3` | Local hour of the daily guide reload |
 | `TABLOWEB_DISCOVERY` | on | Answer network discovery (set `0` to turn off) |
 | `TABLOWEB_DISCOVERY_PORT` | `8788` | UDP port for network discovery |
+| `TABLOWEB_LOG_DIR` | `logs/` beside the binary on Windows; unset elsewhere | Folder for the log file |
+| `TABLOWEB_LOG` | on (Windows) | Set `0` to write no log file |
+
+**The Windows service keeps a log file.** A service has no console, so on Windows the same log
+the console would show is written to `logs\tabloweb-<date>.log` beside `TabloWeb.exe`, one file a
+day, the last seven kept, and the folder is removed when the product is uninstalled. That is where
+to look when multi-view stops or a stream will not start. Linux and Docker installs already have
+`journalctl -u tabloweb` and `docker logs`, so no file is written there unless `TABLOWEB_LOG_DIR`
+names one.
 
 **`TABLOWEB_GUIDE_HOUR` is when the DVR gets its one hard job of the day.** A full guide load
 is hundreds of batch calls, and the box refuses connections outright while it is under that load

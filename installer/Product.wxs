@@ -65,6 +65,8 @@
     </Property>
     <SetProperty Id="FFMPEGFOLDER" Value="[TABLOWEBFOLDER]ffmpeg" After="AppSearch" Sequence="both"
                  Condition="TABLOWEBFOLDER" />
+    <SetProperty Id="LOGFOLDER" Value="[TABLOWEBFOLDER]logs" After="AppSearch" Sequence="both"
+                 Condition="TABLOWEBFOLDER" />
 
     <StandardDirectory Id="ProgramFiles64Folder">
       <Directory Id="INSTALLFOLDER" Name="TabloWeb">
@@ -119,6 +121,8 @@
       -->
       <RegistryValue Root="HKLM" Key="Software\TabloWeb" Name="InstallFolder" Type="string" Value="[INSTALLFOLDER]" />
       <util:RemoveFolderEx On="uninstall" Property="FFMPEGFOLDER" Condition="NOT UPGRADINGPRODUCTCODE" />
+      <!-- The service's own log (FileLog.cs); kept across upgrades, gone when the product is. -->
+      <util:RemoveFolderEx On="uninstall" Property="LOGFOLDER" Condition="NOT UPGRADINGPRODUCTCODE" />
 
       <fw:FirewallException Id="TabloWebHttp" Name="TabloWeb (web)" Protocol="tcp" Port="8787"
                             Scope="localSubnet" Profile="all" />
