@@ -14,6 +14,22 @@
 - Verified: a broadcast query from another machine is answered and junk is ignored (Linux), and on
   Windows 11 the MSI installs the service and both rules, the site answers from the LAN, discovery
   answers a broadcast, and uninstall removes the rules.
+- **Windows fetches its own ffmpeg** (`FfmpegSetup.cs`): with no `TABLOWEB_FFMPEG` and nothing on
+  `PATH`, the service downloads ffmpeg 8.1.2 essentials (pinned, SHA-256 checked) beside
+  `TabloWeb.exe` in the background after start-up; playback says so until it is ready. The MSI
+  removes that folder on uninstall (`util:RemoveFolderEx`, found through an `InstallFolder`
+  registry value) but not on upgrade. Off with `TABLOWEB_FFMPEG_DOWNLOAD=0`. Verified on Windows 11:
+  fresh install → ffmpeg ready in 15s; upgrade kept it; uninstall removed it.
+- **ffmpeg 9.0 halves multi-view speed.** Measured on the Windows VM with two antenna channels and
+  the mosaic's exact command: 9.0.1 0.47×, while 6.1.1 / 7.1.1 / 8.1.2 held 1.05×; without the
+  panes' audio 9.0.1 kept up. A startup warning now flags ffmpeg 9+. Through the service with 8.1.2,
+  a two-channel multi-view held exactly 1.0× over two minutes.
+- **Free streaming channels in multi-view on ffmpeg 7.1+**: they failed to start ("Error binding
+  filtergraph") because newer ffmpeg rejects the CDNs' extension-less ad segment URLs.
+  `-extension_picky 0` is now added to FAST inputs when the ffmpeg supports it (6.1 does not, and
+  does not need it). They now start and composite. **Still open:** a two-FAST multi-view on Windows
+  stalled after about a minute in one two-minute run, although each channel alone, and the pair
+  composited by hand, keep up.
 
 ## 2026-09-15 — Windows measured, MSI build fixed, mosaic bug found
 

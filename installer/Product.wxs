@@ -14,8 +14,8 @@
 
     dotnet publish ..\src\TabloWeb\TabloWeb.csproj -c Release -r win-x64 -p:SelfContained=true ^
         -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o publish
-    wix extension add -g WixToolset.Firewall.wixext/5.0.2
-    wix build Product.wxs -arch x64 -ext WixToolset.Firewall.wixext -d Version=1.1.0 -d PublishDir=publish -o TabloWeb-1.1.0.msi
+    wix extension add -g WixToolset.Firewall.wixext/5.0.2 WixToolset.Util.wixext/5.0.2
+    wix build Product.wxs -arch x64 -ext WixToolset.Firewall.wixext -ext WixToolset.Util.wixext -d Version=1.1.0 -d PublishDir=publish -o TabloWeb-1.1.0.msi
 
   Everything under $(var.PublishDir) is harvested EXCEPT TabloWeb.exe, which gets its own
   Component below instead — it has to carry the ServiceInstall/ServiceControl pair, and a file can
@@ -27,7 +27,8 @@
   downloads a future version of this MSI and launches it.
 -->
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
-     xmlns:fw="http://wixtoolset.org/schemas/v4/wxs/firewall">
+     xmlns:fw="http://wixtoolset.org/schemas/v4/wxs/firewall"
+     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
   <Package Name="TabloWeb"
            Manufacturer="Kevin Saye"
            Version="$(var.Version)"
@@ -51,6 +52,19 @@
     <Icon Id="AppIcon" SourceFile="$(var.PublishDir)\TabloWeb.exe" />
     <Property Id="ARPPRODUCTICON" Value="AppIcon" />
     <Property Id="ARPHELPLINK" Value="https://github.com/ksaye/tablo-web" />
+
+    <!--
+      The ffmpeg the service downloads on first start (FfmpegSetup.cs) is not a file this package
+      installed, so Windows Installer would leave it behind. Remember where the product lives, and
+      remove that ffmpeg folder on a real uninstall - but not during an upgrade, or every new
+      version would download it again.
+    -->
+    <Property Id="TABLOWEBFOLDER">
+      <RegistrySearch Id="TabloWebFolderSearch" Root="HKLM" Key="Software\TabloWeb" Name="InstallFolder"
+                      Type="raw" Bitness="always64" />
+    </Property>
+    <SetProperty Id="FFMPEGFOLDER" Value="[TABLOWEBFOLDER]ffmpeg" After="AppSearch" Sequence="both"
+                 Condition="TABLOWEBFOLDER" />
 
     <StandardDirectory Id="ProgramFiles64Folder">
       <Directory Id="INSTALLFOLDER" Name="TabloWeb">
@@ -103,6 +117,9 @@
         is reachable from the house but not from beyond the router. UDP is network discovery
         (Discovery.cs). Removed again on uninstall.
       -->
+      <RegistryValue Root="HKLM" Key="Software\TabloWeb" Name="InstallFolder" Type="string" Value="[INSTALLFOLDER]" />
+      <util:RemoveFolderEx On="uninstall" Property="FFMPEGFOLDER" Condition="NOT UPGRADINGPRODUCTCODE" />
+
       <fw:FirewallException Id="TabloWebHttp" Name="TabloWeb (web)" Protocol="tcp" Port="8787"
                             Scope="localSubnet" Profile="all" />
       <fw:FirewallException Id="TabloWebDiscovery" Name="TabloWeb (network discovery)" Protocol="udp" Port="8788"

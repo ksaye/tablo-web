@@ -35,12 +35,13 @@ public sealed class StreamManager : IDisposable
     private readonly ILogger<StreamManager> _log;
     private readonly TabloSession _tablo;
     private readonly string _root;
-    private readonly string _ffmpeg;
-    private readonly bool _hasReadrate;
+    private string _ffmpeg;
+    private bool _hasReadrate;
+    private bool _extensionPicky;
     private readonly Timer _reaper;
 
     /// <summary>Which video encoder the transcodes actually use, decided once at startup.</summary>
-    private readonly VideoEncoder _encoder;
+    private VideoEncoder _encoder;
 
     private bool Nvenc => _encoder == VideoEncoder.Nvenc;
 
@@ -106,6 +107,29 @@ public sealed class StreamManager : IDisposable
     /// <summary>The ffmpeg these transcodes use. Multi-view spawns its own and wants the same one.</summary>
     public string FfmpegPath => _ffmpeg;
 
+    /// <summary>
+    /// False only while a Windows install is still downloading its ffmpeg (see FfmpegSetup) — or
+    /// when there is none at all and it could not be fetched.
+    /// </summary>
+    public bool FfmpegReady { get; private set; }
+
+    /// <summary>
+    /// ffmpeg 7.1 and later refuse HLS segments whose URL does not end in a media extension, which
+    /// is exactly what the ad-stitched free streaming CDNs serve ("detected format mpegts extension
+    /// none mismatches allowed extensions"). `-extension_picky 0` lifts that check; older builds do
+    /// not know the option and would refuse to start if given it.
+    /// </summary>
+    public bool ExtensionPickyOption => _extensionPicky;
+
+    /// <summary>Thrown by anything that needs ffmpeg before it is available.</summary>
+    public void EnsureFfmpeg()
+    {
+        if (FfmpegReady) return;
+        throw new InvalidOperationException(_ffmpegProblem);
+    }
+
+    private string _ffmpegProblem = "ffmpeg is not available.";
+
     /// <summary>Which encoder the startup test encode actually proved works.</summary>
     public VideoEncoder Encoder => _encoder;
 
@@ -160,7 +184,7 @@ public sealed class StreamManager : IDisposable
     {
         _tablo = tablo;
         _log = log;
-        _ffmpeg = Environment.GetEnvironmentVariable("TABLOWEB_FFMPEG") ?? "ffmpeg";
+        _ffmpeg = FfmpegSetup.Locate() ?? "ffmpeg";
         _root = Environment.GetEnvironmentVariable("TABLOWEB_STREAM_DIR")
                 ?? Path.Combine(env.ContentRootPath, "stream");
 
@@ -172,9 +196,48 @@ public sealed class StreamManager : IDisposable
         catch (Exception ex) { _log.LogWarning("Could not clear {Root}: {Message}", _root, ex.Message); }
         Directory.CreateDirectory(_root);
 
-        _hasReadrate = DetectReadrate();
-        _encoder = DetectEncoder();
+        if (FfmpegSetup.Locate() is not null || !FfmpegSetup.DownloadAllowed)
+        {
+            ConfigureFfmpeg();
+        }
+        else
+        {
+            // A Windows install with no ffmpeg: fetch one in the background, then finish setting up.
+            _ffmpegProblem = "ffmpeg is still being downloaded - the first start fetches it (about 110 MB). " +
+                             "Try again in a minute or two.";
+            _ = Task.Run(DownloadFfmpegAsync);
+        }
         _reaper = new Timer(_ => Reap(), null, TimeSpan.FromSeconds(15), TimeSpan.FromSeconds(15));
+    }
+
+    private void ConfigureFfmpeg()
+    {
+        _hasReadrate = DetectOptions();
+        _encoder = DetectEncoder();
+        if (FfmpegSetup.MajorVersion(_ffmpeg) is >= 9)
+            _log.LogWarning("ffmpeg {Path} is version 9 or later, which runs multi-view at about half speed " +
+                            "when the panes carry audio. ffmpeg {Pinned} is known to keep up.", _ffmpeg, FfmpegSetup.PinnedVersion);
+    }
+
+    private async Task DownloadFfmpegAsync()
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                _ffmpeg = await FfmpegSetup.DownloadAsync(_log, CancellationToken.None);
+                ConfigureFfmpeg();
+                return;
+            }
+            catch (Exception ex)
+            {
+                _ffmpegProblem = "ffmpeg could not be downloaded (" + ex.Message + "). It will be tried again; " +
+                                 "or install ffmpeg yourself and restart the TabloWeb service.";
+                _log.LogError("Downloading ffmpeg failed (attempt {Attempt}): {Message}. Retrying in 10 minutes.",
+                    attempt, ex.Message);
+                await Task.Delay(TimeSpan.FromMinutes(10));
+            }
+        }
     }
 
     /// <summary>
@@ -289,7 +352,7 @@ public sealed class StreamManager : IDisposable
     /// We only use it to stop a recording transcode running away at full speed, so it is safe
     /// to do without.
     /// </summary>
-    private bool DetectReadrate()
+    private bool DetectOptions()
     {
         try
         {
@@ -299,12 +362,16 @@ public sealed class StreamManager : IDisposable
             var text = p.StandardOutput.ReadToEnd();
             p.WaitForExit(10_000);
             var found = text.Contains("-readrate ");
-            _log.LogInformation("ffmpeg at {Path}; -readrate {State}", _ffmpeg, found ? "supported" : "unavailable");
+            _extensionPicky = text.Contains("-extension_picky ");
+            FfmpegReady = true;
+            _log.LogInformation("ffmpeg at {Path}; -readrate {State}; -extension_picky {Picky}", _ffmpeg,
+                found ? "supported" : "unavailable", _extensionPicky ? "supported" : "unavailable");
             return found;
         }
         catch (Exception ex)
         {
             _log.LogError("Could not run ffmpeg ({Path}): {Message}. Playback will not work.", _ffmpeg, ex.Message);
+            _ffmpegProblem = $"ffmpeg could not be run ({ex.Message}). Install ffmpeg and restart TabloWeb.";
             return false;
         }
     }
@@ -325,6 +392,7 @@ public sealed class StreamManager : IDisposable
     public async Task<StreamSession> StartAsync(string path, bool live, double offsetSeconds,
         bool remote, CancellationToken ct)
     {
+        EnsureFfmpeg();
         EvictForCapacity();
 
         var watch = await TuneAsync(path, ct);

@@ -80,6 +80,7 @@ public sealed class MosaicManager : IDisposable
         if (channelPaths.Count is < 2 or > 4)
             throw new ArgumentException("Multi-view needs between 2 and 4 channels.");
 
+        _streams.EnsureFfmpeg();
         await _startGate.WaitAsync(ct);
         try
         {
@@ -176,6 +177,8 @@ public sealed class MosaicManager : IDisposable
         {
             var isFast = i < session.Channels.Count && TabloClient.IsFast(session.Channels[i]);
             args.AddRange(["-user_agent", TabloUserAgent, "-thread_queue_size", "1024"]);
+            // Free streaming CDNs serve ad segments with extension-less URLs; see ExtensionPickyOption.
+            if (isFast && _streams.ExtensionPickyOption) args.AddRange(["-extension_picky", "0"]);
             if (lowres > 0 && !isFast) args.AddRange(["-lowres", lowres.ToString()]);
             // A Tablo playlist is HTTP; a FAST CDN URL is too. Both take the same options.
             args.AddRange(["-i", sources[i]]);

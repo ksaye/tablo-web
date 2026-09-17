@@ -77,8 +77,22 @@ your network. In Docker it needs host networking (see [Docker](docker.md#network
 |---|---|---|
 | `TABLOWEB_MAX_STREAMS` | `3` | Concurrent transcodes |
 | `TABLOWEB_FFMPEG` | `ffmpeg` | Path to the binary |
+| `TABLOWEB_FFMPEG_DOWNLOAD` | on (Windows) | Fetch ffmpeg when there is none (set `0` to turn off) |
 | `TABLOWEB_STREAM_DIR` | `stream/` beside the binary | Where segments are written |
 | `TABLOWEB_LAN_NETWORKS` | private ranges + `100.64.0.0/10` | What counts as "local" |
+
+**On Windows, ffmpeg is fetched for you.** When `TABLOWEB_FFMPEG` is not set and there is no
+`ffmpeg` on `PATH`, the service downloads a pinned build — ffmpeg 8.1.2 "essentials" from
+[gyan.dev's GitHub releases](https://github.com/GyanD/codexffmpeg/releases/tag/8.1.2), checked
+against its published SHA-256 — into an `ffmpeg` folder beside `TabloWeb.exe`, in the background
+right after the service starts (usually well under a minute). Playing something before it is ready
+says so. Uninstalling removes that folder; upgrading keeps it. The build is GPL-licensed and is not
+part of the TabloWeb installer.
+
+**Avoid ffmpeg 9.0 for multi-view.** Measured on Windows 11 with the same two broadcast channels and
+the same command, ffmpeg 9.0.1 ran multi-view at 0.47× real time once the panes' audio was included,
+while 6.1.1, 7.1.1 and 8.1.2 all held real time (1.05×). TabloWeb logs a warning at startup if it
+finds ffmpeg 9 or later.
 
 **`TABLOWEB_MAX_STREAMS` is about tuners as much as CPU.** Each live viewer holds one of the
 DVR's tuners for as long as their browser keeps pulling segments. When the cap is reached, the

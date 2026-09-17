@@ -96,17 +96,10 @@ Grab the latest `TabloWeb-*.msi` from **[Releases](https://github.com/ksaye/tabl
 and run it. It installs TabloWeb as a Windows Service (starts on boot, no console window) and
 adds an *Open TabloWeb* Start Menu shortcut pointing at <http://localhost:8787>.
 
-You still need **ffmpeg** — it is not bundled. Easiest is winget, from an elevated prompt:
-
-```powershell
-winget install --id Gyan.FFmpeg -e
-```
-
-Then open a **new** terminal (PATH only updates in shells started after the install) and confirm
-with `ffmpeg -version`. Restart the TabloWeb service afterwards (`Restart-Service TabloWeb`) if it
-was already running — it only looks for `ffmpeg.exe` on `PATH` at startup. No ffmpeg on `PATH`
-means the service log fills up with "no such program" for every play attempt. FAST (free
-streaming) channels don't need it, so the site will otherwise look normal.
+**ffmpeg is taken care of.** If there is no ffmpeg on the machine, the service downloads a pinned,
+checksum-verified build (8.1.2) into its own folder the first time it starts — see
+[Playback](docs/configuration.md#playback). If you already have ffmpeg on `PATH`, that one is used
+instead; avoid ffmpeg 9.0, which runs multi-view at half speed.
 
 The installer adds Windows Firewall rules so other devices on your network can reach the site
 (TCP 8787) and find it (UDP 8788, network discovery) — limited to your local subnet, and removed
