@@ -372,6 +372,26 @@ public sealed class MosaicManager : IDisposable
         };
     }
 
+    /// <summary>How many segments a stream must hold before it is handed to a player.</summary>
+    private const int StartSegments = 4;
+
+    /// <summary>Segments listed in the video playlist, or 0 before there is one.</summary>
+    private static int SegmentCount(MosaicSession session)
+    {
+        try
+        {
+            var playlist = Path.Combine(session.Dir, "index-0.m3u8");
+            if (!File.Exists(playlist)) return 0;
+            using var file = new FileStream(playlist, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            using var reader = new StreamReader(file);
+            var count = 0;
+            while (reader.ReadLine() is { } line)
+                if (line.EndsWith(".ts", StringComparison.OrdinalIgnoreCase)) count++;
+            return count;
+        }
+        catch { return 0; }   // ffmpeg rewrites it in place; a torn read just tries again
+    }
+
     private static async Task WaitForMasterAsync(MosaicSession session, CancellationToken ct)
     {
         var master = Path.Combine(session.Dir, "master.m3u8");
@@ -380,9 +400,13 @@ public sealed class MosaicManager : IDisposable
         {
             if (File.Exists(master) && new FileInfo(master).Length > 0)
             {
-                // The master can be written before any media playlist has a segment; give the
-                // first video playlist a moment so the client's first fetch is not a 404 storm.
-                if (File.Exists(Path.Combine(session.Dir, "index-0.m3u8"))) return;
+                // Wait for a few segments, not just the first. A player joins a live stream a few
+                // segments back from the end, so handing it a playlist one segment long starts it
+                // at the very beginning — where the panes are still black, because ffmpeg has not
+                // finished working out what its inputs are. It then plays at 1x from there and
+                // stays that far behind: on a Fire TV the picture took twenty seconds to appear
+                // while the stream itself had been fine for most of them.
+                if (SegmentCount(session) >= StartSegments) return;
             }
             if (session.Process is { HasExited: true })
                 throw new InvalidOperationException(

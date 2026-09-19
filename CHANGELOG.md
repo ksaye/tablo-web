@@ -8,6 +8,12 @@
   **12.1s to 4.5s** and a playable stream from **16.5s to 7.7s**, with both panes verified to be
   carrying real pictures. It also leaves the multi-view nearer to live, which shortens the lag
   before the yellow active-audio box catches up with an arrow-key press.
+- **A multi-view is handed over once it holds four segments**, not one. A player joins a live
+  stream a few segments from the end, so a one-segment playlist started it at the very beginning —
+  the black opening, before ffmpeg had worked out what its inputs were — and it then played on at
+  1x and stayed that far behind. On a Fire TV the picture took twenty seconds to appear even
+  though the stream itself had been fine for most of them. Now the picture is there about ten
+  seconds after pressing Start (it was forty to sixty), and it is real from the first frame.
 - Capping ffmpeg's analysis budget as well (1s/1MB per input) looked like another second or two,
   but broadcast MPEG-2 was then not always recognised in time and those panes composited as black
   rectangles. The budget is left at ffmpeg's default on purpose.
