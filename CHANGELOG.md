@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-09-18 — Multi-view starts in about four seconds instead of sixteen
+
+- **Every pane now opens at the live edge, and is not over-analysed first** (`MosaicManager.cs`):
+  ffmpeg opens an HLS input three segments back by default and reads five seconds of it before it
+  will write anything, and with a pane doing that per channel it was nearly all of the wait before
+  a multi-view appeared. Measured on the same two antenna channels, Windows 11: the start call went
+  from **12.1s to 3.8s**, and a playable stream from **16.5s to 4.5s**. Two free-streaming panes
+  went from 15.4s to 9.6s (their CDN publishes six-second segments, so they can only start so fast).
+  It also leaves the picture nearer to live, which shortens the lag before the yellow
+  active-audio box catches up with an arrow-key press.
+
 ## 2026-09-17 — A log file on Windows
 
 - **The Windows service now writes a log** (`FileLog.cs`) to `logs\tabloweb-<date>.log` beside the
