@@ -176,13 +176,16 @@ public sealed class MosaicManager : IDisposable
         for (var i = 0; i < sources.Count; i++)
         {
             var isFast = i < session.Channels.Count && TabloClient.IsFast(session.Channels[i]);
-            // Start at the live edge, and stop over-reading each input before deciding what it is.
-            // ffmpeg's defaults open an HLS input three segments back and analyse five seconds of
-            // it, and with every pane doing that it was most of the wait before a multi-view
-            // appeared at all: two free-streaming panes took 15.4s to the first playlist with the
-            // defaults and 9.6s with these. It also leaves the picture nearer to live.
+            // Open each pane at the live edge rather than ffmpeg's default of three segments back:
+            // fetching those three, per pane, was most of the wait before a multi-view appeared,
+            // and it left the picture further behind live than it needed to be.
+            //
+            // The analysis budget is deliberately left alone. Capping it (1s/1MB) looked like a
+            // further second or two saved, but broadcast MPEG-2 then did not always get recognised
+            // in time and those panes composited as black rectangles — a faster multi-view of
+            // nothing.
             args.AddRange(["-user_agent", TabloUserAgent, "-thread_queue_size", "1024",
-                "-live_start_index", "-1", "-analyzeduration", "1000000", "-probesize", "1000000"]);
+                "-live_start_index", "-1"]);
             // Free streaming CDNs serve ad segments with extension-less URLs; see ExtensionPickyOption.
             if (isFast && _streams.ExtensionPickyOption) args.AddRange(["-extension_picky", "0"]);
             if (lowres > 0 && !isFast) args.AddRange(["-lowres", lowres.ToString()]);

@@ -1,15 +1,16 @@
 # Changelog
 
-## 2026-09-18 — Multi-view starts in about four seconds instead of sixteen
+## 2026-09-18 — Multi-view starts in about half the time
 
-- **Every pane now opens at the live edge, and is not over-analysed first** (`MosaicManager.cs`):
-  ffmpeg opens an HLS input three segments back by default and reads five seconds of it before it
-  will write anything, and with a pane doing that per channel it was nearly all of the wait before
-  a multi-view appeared. Measured on the same two antenna channels, Windows 11: the start call went
-  from **12.1s to 3.8s**, and a playable stream from **16.5s to 4.5s**. Two free-streaming panes
-  went from 15.4s to 9.6s (their CDN publishes six-second segments, so they can only start so fast).
-  It also leaves the picture nearer to live, which shortens the lag before the yellow
-  active-audio box catches up with an arrow-key press.
+- **Every pane now opens at the live edge** (`MosaicManager.cs`): ffmpeg opens an HLS input three
+  segments back by default, and fetching those, per pane, was most of the wait before a multi-view
+  appeared. Measured on the same two antenna channels, Windows 11: the start call went from
+  **12.1s to 4.5s** and a playable stream from **16.5s to 7.7s**, with both panes verified to be
+  carrying real pictures. It also leaves the multi-view nearer to live, which shortens the lag
+  before the yellow active-audio box catches up with an arrow-key press.
+- Capping ffmpeg's analysis budget as well (1s/1MB per input) looked like another second or two,
+  but broadcast MPEG-2 was then not always recognised in time and those panes composited as black
+  rectangles. The budget is left at ffmpeg's default on purpose.
 
 ## 2026-09-17 — A log file on Windows
 
