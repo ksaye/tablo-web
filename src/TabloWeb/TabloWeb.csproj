@@ -12,7 +12,7 @@
     <!-- Bump this alongside the git tag on every release — it is what the update checker (see
          UpdateChecker.cs) compares against the latest GitHub release, and what the installer
          (installer/Product.wxs) stamps the MSI with. -->
-    <Version>1.2.0</Version>
+    <Version>1.2.1</Version>
   </PropertyGroup>
 
   <!-- The only package reference this project needs: cookie authentication and data protection
