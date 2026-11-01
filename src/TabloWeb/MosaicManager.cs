@@ -366,7 +366,9 @@ public sealed class MosaicManager : IDisposable
         return n switch
         {
             2 => [(0, halfH / 2, halfW, halfH), (halfW, halfH / 2, halfW, halfH)],
-            3 => [(0, 0, halfW, halfH), (halfW, 0, halfW, halfH), (halfW / 2, halfH, halfW, halfH)],
+            // The third pane sits bottom-RIGHT, leaving the bottom-left quarter empty - in full
+            // screen the controls go there (app.js, .mv-three) instead of over a picture.
+            3 => [(0, 0, halfW, halfH), (halfW, 0, halfW, halfH), (halfW, halfH, halfW, halfH)],
             _ => [(0, 0, halfW, halfH), (halfW, 0, halfW, halfH),
                   (0, halfH, halfW, halfH), (halfW, halfH, halfW, halfH)],
         };

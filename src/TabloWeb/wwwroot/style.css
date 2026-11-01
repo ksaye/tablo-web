@@ -309,6 +309,35 @@ video::cue {
   border-top: 0; background: rgba(13, 17, 23, 0.82);
   padding-bottom: max(10px, env(safe-area-inset-bottom));
 }
+.player-stage:fullscreen .mosaic-bar { transition: opacity 0.3s; }
+.player-stage:fullscreen.bar-hidden .mosaic-bar { opacity: 0; pointer-events: none; }
+/* Three panes: the composite's bottom-left quarter is empty (MosaicManager.Rects), so the bar
+   fills exactly that quarter of the 16:9 picture, wherever the letterbox or pillarbox puts it. */
+.player-stage:fullscreen.mv-three .mosaic-bar {
+  --pic-w: min(100vw, 177.778vh);
+  --pic-h: min(100vh, 56.25vw);
+  left: calc((100vw - var(--pic-w)) / 2);
+  bottom: calc((100vh - var(--pic-h)) / 2);
+  right: auto;
+  width: calc(var(--pic-w) / 2);
+  height: calc(var(--pic-h) / 2);
+  box-sizing: border-box;
+  padding: 12px;
+  background: transparent;
+  align-content: center; justify-content: center;
+}
+.player-stage:fullscreen.mv-three .mosaic-panes { margin-right: 0; justify-content: center; }
+/* Sized from the quarter, not the page: the phone's own large-text setting blew the buttons up
+   until they spilled out of it (Kevin, 2026-11-01). text-size-adjust stops the browser scaling
+   them back up again. */
+.player-stage:fullscreen.mv-three .mosaic-bar {
+  font-size: clamp(10px, calc(var(--pic-h) / 30), 18px);
+  gap: 0.5em;
+  -webkit-text-size-adjust: none; text-size-adjust: none;
+}
+.player-stage:fullscreen.mv-three .mosaic-panes { gap: 0.5em; }
+.player-stage:fullscreen.mv-three .mosaic-bar .ghost,
+.player-stage:fullscreen.mv-three .mosaic-bar .select { padding: 0.4em 0.8em; }
 .mosaic-pane[aria-pressed="true"],
 #mosaicRotateBtn[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #051016; }
 

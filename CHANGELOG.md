@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-11-01 — Multi-view: tidier full screen, and three panes leave room for the controls
+
+- **The full-screen control bar fades out** after 4 seconds untouched. A tap, or a mouse move,
+  brings it back. It used to stay up for good over the bottom pane, which is usually where the
+  score is, and when a phone was projected to a TV it showed up there too. The tap that brings
+  it back does only that, so reaching for a button can't move the sound by landing on a pane.
+- **Buttons on the full-screen bar no longer act as a tap on the pane behind them.** Pressing
+  Auto-cycle used to give the sound to the pane underneath and switch the cycle straight back off.
+- **Three panes: the third one now sits bottom-right** (`MosaicManager.Rects` and `paneLayout` in
+  app.js, changed together), leaving the bottom-left quarter empty. In full screen the controls
+  go in that quarter. There they cover nothing, so they stay, sized from the quarter rather than
+  the page, so a phone's large-text setting can't push them out over the pictures.
+
 ## 2026-09-18 — Multi-view starts in about half the time
 
 - **Every pane now opens at the live edge** (`MosaicManager.cs`): ffmpeg opens an HLS input three

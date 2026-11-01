@@ -342,6 +342,8 @@ function installMosaic(session) {
 
   attach(session.url);
   renderMosaicPanes(session.channels || []);
+  // Three panes leave the bottom-left quarter of the picture empty; the docked bar goes there.
+  $('playerStage').classList.toggle('mv-three', (session.channels || []).length === 3);
   $('mosaicBar').hidden = false;
   startRotate();          // the audio auto-cycles by default
   watchMosaic();
@@ -445,6 +447,7 @@ function teardownMosaic(stopServer) {
   mv.muted = false;
   video.controls = true;          // back for ordinary playback (see installMosaic)
   dockMosaicBar(false);
+  $('playerStage').classList.remove('mv-three');
   $('mosaicBar').hidden = true;
   const session = mv.session;
   mv.session = null;
@@ -907,6 +910,11 @@ video.addEventListener('playing', () => {
    has always promised. */
 $('playerStage').addEventListener('click', (event) => {
   if (!mv.session) return;
+  // Docked in full screen the bar sits inside the stage, so its buttons' clicks arrive here too -
+  // and the pane under "Auto-cycle" took the sound and switched the cycle straight back off.
+  if (event.target.closest('#mosaicBar')) return;
+  // The tap that brought the hidden bar back is only that; see revealMosaicBar.
+  if (mvBar.swallowClick) { mvBar.swallowClick = false; return; }
   mvUnmute();
   const pane = paneAtPoint(event.clientX, event.clientY);
   if (pane >= 0) { stopRotate(); setAudioPane(pane); }
@@ -919,7 +927,7 @@ $('playerStage').addEventListener('click', (event) => {
    so they hold at any size. */
 function paneLayout(n) {
   if (n === 2) return [[0, 0.25, 0.5, 0.5], [0.5, 0.25, 0.5, 0.5]];
-  if (n === 3) return [[0, 0, 0.5, 0.5], [0.5, 0, 0.5, 0.5], [0.25, 0.5, 0.5, 0.5]];
+  if (n === 3) return [[0, 0, 0.5, 0.5], [0.5, 0, 0.5, 0.5], [0.5, 0.5, 0.5, 0.5]];
   return [[0, 0, 0.5, 0.5], [0.5, 0, 0.5, 0.5], [0, 0.5, 0.5, 0.5], [0.5, 0.5, 0.5, 0.5]];
 }
 
@@ -1119,11 +1127,42 @@ function dockMosaicBar(intoStage) {
   const stage = $('playerStage');
   if (intoStage) {
     if (bar.parentElement !== stage) stage.append(bar);
-  } else if (bar.parentElement === stage) {
+    revealMosaicBar();
+  } else {
+    clearTimeout(mvBar.timer);
+    stage.classList.remove('bar-hidden');
     // Its home is the player, immediately before the scrubber.
-    $('player').insertBefore(bar, $('scrub'));
+    if (bar.parentElement === stage) $('player').insertBefore(bar, $('scrub'));
   }
 }
+
+/* The docked bar fades after a few untouched seconds and the next touch or mouse move brings it
+   back. Left up for good it covered the bottom pane - the score, on a game - and a phone projected
+   to a TV put it on the TV too. The touch that reveals it does nothing else, so reaching for the
+   buttons cannot move the sound by landing on a pane on the way. With three panes it sits in the
+   empty quarter, covers nothing, and stays. */
+const mvBar = { timer: null, swallowClick: false };
+const MV_BAR_HIDE_MS = 4000;
+
+function revealMosaicBar() {
+  const stage = $('playerStage');
+  stage.classList.remove('bar-hidden');
+  clearTimeout(mvBar.timer);
+  if (stage.classList.contains('mv-three')) return;
+  mvBar.timer = setTimeout(() => {
+    if ($('mosaicBar').parentElement === stage) stage.classList.add('bar-hidden');
+  }, MV_BAR_HIDE_MS);
+}
+
+$('playerStage').addEventListener('pointerdown', () => {
+  if ($('mosaicBar').parentElement !== $('playerStage')) return;
+  mvBar.swallowClick = $('playerStage').classList.contains('bar-hidden');
+  revealMosaicBar();
+});
+// A mouse has no "touch" to bring the bar back with; moving it is the equivalent.
+$('playerStage').addEventListener('pointermove', (event) => {
+  if (event.pointerType === 'mouse' && $('mosaicBar').parentElement === $('playerStage')) revealMosaicBar();
+});
 
 // A tuner stays busy while anything pulls segments, so tell the server on the way out.
 window.addEventListener('pagehide', () => {
