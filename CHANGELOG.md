@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-11-01 — Build output is no longer in the repository
+
+The `bin/` and `obj/` folders of both projects (63 files) had been committed, so every build left
+the working tree dirty and the repository carried stale binaries. They are removed from git
+(not from anyone's disk) and a `.gitignore` keeps build output, installer output and editor
+state out from now on.
+
 ## 2026-11-01 — Multi-view: tidier full screen, and three panes leave room for the controls
 
 - **The full-screen control bar fades out** after 4 seconds untouched. A tap, or a mouse move,

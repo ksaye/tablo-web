@@ -1,0 +1,12 @@
+# Build output - produced by dotnet build/publish and the installer, never source.
+bin/
+obj/
+publish/
+*.msi
+*.wixpdb
+
+# Editor and IDE state
+.vs/
+.vscode/
+*.user
+*.suo
